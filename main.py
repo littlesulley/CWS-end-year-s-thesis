@@ -71,9 +71,9 @@ interval_report = args.interval_report
 interval_write = args.interval_write
 model_path = args.model
 
-if not os.path.exists(os.path.join(CHECKPOINT_DIR, 'data_type')):
-    os.mkdir(os.path.join(CHECKPOINT_DIR, 'data_type'))
-SAVE_DIR = os.path.join(CHECKPOINT_DIR, 'data_type')
+if not os.path.exists(os.path.join(CHECKPOINT_DIR, data_type)):
+    os.mkdir(os.path.join(CHECKPOINT_DIR, data_type))
+SAVE_DIR = os.path.join(CHECKPOINT_DIR, data_type)
 
 print("="*15, "Constructing vocabulary", '='*15)
 labels = ['B', 'I', 'E', 'S']
@@ -259,7 +259,7 @@ if model_path == '':
         valid_epoch_f1.append(f1)
         if best_f1 < f1:
             best_f1 = f1
-            torch.save(model.state_dict(), os.path.join(SAVE_DIR, str(f1)))
+            torch.save(model.state_dict(), os.path.join(SAVE_DIR, 'best_{:.4f}' % f1))
         print('='*80)
         print('[Epoch: %4d]  Current accuracy is %-6.4f, best accuracy is %-6.4f. Current F1 is %-6.4f, best F1 is %-6.4f' % (current_epoch, accuracy, best_acc, f1, best_f1))
         print('='*80)
