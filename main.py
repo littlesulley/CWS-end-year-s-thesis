@@ -27,8 +27,8 @@ parser = argparse.ArgumentParser(description='Argparser for Chinese Word Segment
 
 # you may need to change the next arguments.
 parser.add_argument('--data_type', type=str, default='PKU')
-parser.add_argument('--train_path', type=str, default='./datasets/training/pku_train',help='Training data path.')
-parser.add_argument('--dev_path', type=str, default='./datasets/training/pku_dev', help='Development data path.')
+parser.add_argument('--train_path', type=str, default='',help='Training data path.')
+parser.add_argument('--dev_path', type=str, default='', help='Development data path.')
 parser.add_argument('--eval_path', type=str, default='', help='Evaluation data path.')
 parser.add_argument('--vocab_path', type=str, default='', help='Vocabulary path.')
 parser.add_argument('--layers', type=int, default=2, help='Lstm layers.')
@@ -86,10 +86,12 @@ if use_cuda:
     model = model.cuda()
 
 optimizer = optim.Adam(model.parameters(), lr=lr)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode='max', factor=0.5, patience=0, verbose=True, min_lr=1e-6)
+scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
 
-train_dataset = CWSDataset(train_path, type=data_type)
-dev_dataset = CWSDataset(dev_path, type=data_type)
+if train_path != '':
+    train_dataset = CWSDataset(train_path, type=data_type)
+if dev_path != '':
+    dev_dataset = CWSDataset(dev_path, type=data_type)
 if eval_path != '':
     test_dataset =CWSDataset(eval_path, type=data_type, mode='single')
 
@@ -100,8 +102,10 @@ if model_path == '':
     n_iters = (train_size // batch_size) if train_size % batch_size == 0 else (train_size // batch_size + 1)
 
     best_f1 = 0.0
+    best_acc = 0.0
     train_iter_f1 = []
     valid_epoch_f1 = []
+    valid_epoch_acc = []
 
     print('='*80)
     print('Training data has %d samples, which need %d iterations to finish one epoch.' % (train_size, n_iters))
@@ -204,11 +208,19 @@ if model_path == '':
             logits = model(X_tensor, length_tensor)
             _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
 
+            batch_right, batch_total, _ = calculate_accuracy(Y_tensor, Y_pred, mask_tensor)
             _, _, _, batch_data_dict = calculate_f1(Y_tensor, Y_pred, labels=[0, 1, 2, 3], mask=mask_tensor)
+            right += batch_right
+            total += batch_total
             for label in data_dict.keys():
                 data_dict[label]['TP'] += batch_data_dict[label]['TP']
                 data_dict[label]['FP'] += batch_data_dict[label]['FP']
                 data_dict[label]['FN'] += batch_data_dict[label]['FN']
+
+        accuracy = 1.0 * right / total 
+        if best_acc < accuracy:
+            best_acc = accuracy
+        valid_epoch_acc.append(accuracy)
 
         labels_precision = []
         labels_recall = []
@@ -237,7 +249,7 @@ if model_path == '':
             best_f1 = f1
             torch.save(model.state_dict(), data_type + '_' + str(f1))
         print('='*80)
-        print('[Epoch: %4d]  Current F1 on validation set is %-6.4f, best F1 is %-6.4f' % (current_epoch, f1, best_f1))
+        print('[Epoch: %4d]  Current accuracy is %-6.4f, best accuracy is %-6.4f. Current F1 is %-6.4f, best F1 is %-6.4f' % (current_epoch, accuracy, best_acc, f1, best_f1))
         print('='*80)
 
     print('='*5 + ' Starting finished! ' + '='*5)
@@ -271,7 +283,7 @@ else:
         logits = model(X_tensor, length_tensor)
         _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
 
-        _, _, _, batch_dict = calculate_f1(Y_tensor, Y_pred, labels=[0, 1, 2, 3], mask=mask_tensor)
+        _, _, _, batch_data_dict = calculate_f1(Y_tensor, Y_pred, labels=[0, 1, 2, 3], mask=mask_tensor)
         for label in data_dict.keys():
             data_dict[label]['TP'] += batch_data_dict[label]['TP']
             data_dict[label]['FP'] += batch_data_dict[label]['FP']
