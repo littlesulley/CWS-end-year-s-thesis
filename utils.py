@@ -90,9 +90,10 @@ class Vocab:
         with open(in_file, 'r', encoding='utf-8') as f:
             for word in f:
                 word = word.strip()
-                self.word2id[word] = self.vocab_size
-                self.id2word[self.vocab_size] = word
-                self.vocab_size += 1
+                if word not in self.word2id:
+                    self.word2id[word] = self.vocab_size
+                    self.id2word[self.vocab_size] = word
+                    self.vocab_size += 1
 
     def trim(self):
         self.id2word = {0:"<PAD>", 1:"<UNK>", 2:"<START>", 3:"<END>"}
@@ -530,13 +531,13 @@ def calculate_params(model, modules=None):
     '''
     number = 0
     if modules is None:
-        for param in model.params():
+        for param in model.parameters():
             number += torch.numel(param)
     else:
         for module in modules:
-            for param in getattr(model, module).params():
+            for param in getattr(model, module).parameters():
                 number += torch.numel(param)
-    print('='*80)
-    print('The number of parameters of ' + ('"model"' if modules is None else ' & '.join(modules) + ' is: %d.') % number)
-    print('='*80)
+    print('='*50)
+    print('The number of parameters of ' + ('"model"' if modules is None else ' & '.join(modules)) + ' is: %d.' % number)
+    print('='*50)
     return number

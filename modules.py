@@ -236,7 +236,7 @@ class BiLstmClassifier(nn.Module):
 class CWSLstm(nn.Module):
     def __init__(self,
                layers=2,
-               hiddem_dim=256,
+               hidden_dim=256,
                output_size=4,
                embed_dim=300,
                vocab_size=None,
@@ -258,13 +258,13 @@ class CWSLstm(nn.Module):
             self.embedding = nn.Embedding(vocab_size, embed_dim)
         
         self.layers = layers 
-        self.hiddem_dim = hiddem_dim
+        self.hidden_dim = hidden_dim
         self.output_size = output_size
         self.use_CRF = use_CRF
 
         self.dropout_layer = nn.Dropout(dropout)
-        self.lstm_layer = nn.LSTM(self.embed_dim, hiddem_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
-        self.output_layer = nn.Linear(2 * hiddem_dim, output_size)
+        self.lstm_layer = nn.LSTM(self.embed_dim, hidden_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
+        self.output_layer = nn.Linear(2 * hidden_dim, output_size)
         if use_CRF:
             #TODO: implement CRF layer module.
             pass 
