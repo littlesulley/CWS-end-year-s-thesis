@@ -283,6 +283,7 @@ else:
 
     total = 0
     right = 0
+    data_dict = {}
     for i in label_vocab.values():
         data_dict[i] = {'TP': 0, 'FP': 0, 'FN': 0}
 
