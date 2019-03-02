@@ -128,6 +128,7 @@ if model_path == '':
         print('Start training at epoch: %d' % current_epoch)
         print('='*30)
         for iters, current_batch in enumerate(LoadData(train_dataset, batch_size)):
+            model.zero_grad()
             current_iter = iters + 1 
 
             batch_indexed = convert_to_index(current_batch, vocab, label_vocab=label_vocab)

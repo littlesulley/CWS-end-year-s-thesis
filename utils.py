@@ -144,16 +144,16 @@ class CWSDataset(Dataset):
         tags = ""
         prev_space = 1  # whether the previous character is a space
         for i in range(sentence_len):
-            if sentence[i] == (' ' if self.type != 'AS' else '\t'):
+            if sentence[i] == (' ' if self.type != 'AS' else '\u3000'):
                 prev_space = 1
             else:
                 if prev_space == 1:
-                    if i == sentence_len - 1 or sentence[i + 1] == (' ' if self.type != 'AS' else '\t'):
+                    if i == sentence_len - 1 or sentence[i + 1] == (' ' if self.type != 'AS' else '\u3000'):
                         tags += 'S'
                     else:
                         tags += 'B'
                 else:
-                    if i == sentence_len - 1 or sentence[i + 1] == (' ' if self.type != 'AS' else '\t'):
+                    if i == sentence_len - 1 or sentence[i + 1] == (' ' if self.type != 'AS' else '\u3000'):
                         tags += 'E'
                     else:
                         tags += 'I'
@@ -164,7 +164,7 @@ class CWSDataset(Dataset):
         if self.type != 'AS':
             chars = sentence.replace(' ', '')
         else:
-            chars = sentence.replace('\t', '')
+            chars = sentence.replace('\u3000', '')
         return chars
 
     @classmethod
@@ -182,7 +182,7 @@ class CWSDataset(Dataset):
             assert len(unseg_text[i]) == len(labels[i]), ('Make sure the lengths of each sentence and its corresponding label match.')
 
         if type == 'AS':
-            delimiter = '\t'
+            delimiter = '\u3000'
         elif type == 'City':
             delimiter = ' '
         else:
