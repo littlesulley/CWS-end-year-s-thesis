@@ -112,6 +112,8 @@ if model_path == '':
     train_size = len(train_dataset)
     n_iters = (train_size // batch_size) if train_size % batch_size == 0 else (train_size // batch_size + 1)
 
+    best_precision = 0.0
+    best_recall = 0.0
     best_f1 = 0.0
     best_acc = 0.0
     train_iter_f1 = []
@@ -258,13 +260,15 @@ if model_path == '':
 
         valid_epoch_f1.append(f1)
         if best_f1 < f1:
+            best_precision = precision
+            best_recall = recall
             best_f1 = f1
             torch.save(model.state_dict(), os.path.join(SAVE_DIR, 'best_{:.4f}'.format(f1)))
         print('='*80)
         print('[Epoch: %4d]  Current accuracy is %-6.4f, best accuracy is %-6.4f. Current F1 is %-6.4f, best F1 is %-6.4f' % (current_epoch, accuracy, best_acc, f1, best_f1))
         print('='*80)
 
-    print('='*5 + ' Starting finished! ' + '='*5)
+    print('='*5 + ' Training finished! The best precision is: %-6.4f, recall is: %-6.4f, F1 is: %-6.4f, accuracy is: %-6.4f' % (best_precision, best_recall, best_f1, best_acc) + '='*5)
 
 # <========== if `model_path` is provided, evaluation procedure will be executed =========>
 else:
@@ -322,5 +326,5 @@ else:
         f1 = 2.0 * precision * recall / (precision + recall)   
 
     print('='*80)
-    print('Finish Evaluation, the F1 is %-6.4f' % f1)
+    print('Finish Evaluation, precision is: %-6.4f, recall is: %-6.4f, F1 is: %-6.4f' % (precision, recall, f1))
     print('='*80)
