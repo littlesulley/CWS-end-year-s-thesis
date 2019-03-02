@@ -1,8 +1,9 @@
 """
 This file implements some useful functions and classes.
-@ author: Qinghong Han
-@ date: Feb 22nd, 2019
-@ contact: qinghong_han@shannonai.com
+@ author:        Qinghong Han
+@ date:          Feb 22nd, 2019
+@ contact:       qinghong_han@shannonai.com
+@ modified date: Mar 2nd. 2019
 """
 
 import math
@@ -110,7 +111,7 @@ class Vocab:
             self.vocab_size += 1
 
 class CWSDataset(Dataset):
-    def __init__(self, file, type='PKU', mode='pair'):
+    def __init__(self, file, type='PKU', mode='pair', sort=True):
         super(CWSDataset, self).__init__()
         assert type in ['PKU', 'AS', 'City', 'MS'], ("Make sure the dataset type is one of ['PKU', 'AS', 'City', 'MS'].")
         self.type = type
@@ -118,7 +119,8 @@ class CWSDataset(Dataset):
         with open(file, 'r', encoding='utf-8') as f:
             data_lines = f.readlines()
             data_lines = [line.strip() for line in data_lines]
-        data_lines = sorted(data_lines, key=len, reverse=True)
+        if sort:
+            data_lines = sorted(data_lines, key=len, reverse=True)
 
         if mode == 'pair':
             Y_lines = [self.get_sentence_tags(line) for line in data_lines if len(line) > 0]
@@ -164,6 +166,77 @@ class CWSDataset(Dataset):
             chars = sentence.replace('\t', '')
         return chars
 
+    @classmethod
+    def unsegmented_to_segmented(cls, unseg_text, labels, save_seg_text_file=None, rewrite=False, type='PKU'):
+        '''This function is used to convert an unsegmented text to a segmented text with predicted labels.
+            unseg_text: raw unsegmented text, a list of strings.
+            labels: predicted labels, a list of labels.
+            save_seg_text_file: save path.
+            rewrite: if True, `save_seg_text_file` will cleared, or mode `a` is used.
+        '''
+        assert len(unseg_text) == len(labels), ('Make sure the lengths of `unseg_text` and `labels` match.')
+        batch_size = len(unseg_text)
+
+        for i in range(batch_size):
+            assert len(unseg_text[i]) == len(labels[i]), ('Make sure the lengths of each sentence and its corresponding label match.')
+
+        if type == 'AS':
+            delimiter = '\t'
+        elif type == 'City':
+            delimiter = ' '
+        else:
+            delimiter = '  '
+        
+        seg_text = []
+        for i in range(batch_size):
+            unseg = unseg_text[i]
+            label = labels[i]
+            seg = []
+
+            sentence_len = len(unseg)
+
+            for j in range(sentence_len):
+                seg += unseg[j]
+                if label[j] == 'B' or label[j] == 'I':
+                    continue   # we don't need to do anything if label is 'B' or 'I'
+                else:
+                    if j == sentence_len - 1:
+                        continue   # if it has reached EOS, we do nothing
+                    else:
+                        seg += delimiter # if it hasn't reached EOS, we need to add delimiter
+                seg += '\n'
+            
+            seg_text.append(seg)
+        
+        if save_seg_text_file is not None:
+            with open(save_seg_text_file, 'w' if rewrite == True else 'a', encoding='utf8') as fout:
+                fout.writelines(seg_text)
+        
+        return seg_text
+
+    @classmethod
+    def tensor_label_to_str(cls, tensor_label, mask, label_vocab):
+        '''This function transfers a tensor of a batch of labels into a list of strings.
+            tensor_label: a 2D tensor, shape of (batch_size, seq_len)
+            mask: a 2D tensor, shape same as `tensor_label`
+            label_vocab: a label vocabulary, where keys are labels and values are corresponding index
+        '''
+        index_vocab = {value: key for key, value in label_vocab.items()}
+
+        batch_size = len(tensor_label)
+        seq_len = tensor_label.size()
+
+        labels = []
+        for i in range(batch_size):
+            label = ""
+            for j in range(seq_len):
+                if mask[i][j] == 1:
+                    label += index_vocab[tensor_label[i][j]]
+                else:
+                    break
+            labels.append(label)
+        
+        return labels  
 
 # <========== This function is used to calculate OOV rate ==========>
 def calculate_oov(test_corpus_file, token_type='word', train_vocab=None, train_vocab_file=None):
@@ -341,12 +414,13 @@ def BPE(vocab, n_merges=10):
     return vocab
 
 # <========== The next function is used to convert a batch of input into a batch tensor ==========>
-def convert_to_tensor(batch, PAD=0, mode='pair'):
+def convert_to_tensor(batch, PAD=0, mode='pair', sort=True):
     '''Make sure `batch` is a list of tuples, where each tuple consists of an `x_sample` and a `y_sample`, if mode is `pair`.
     The `<PAD>` token is defaulted to `0`.
     '''
     if mode == 'pair':
-        batch = sorted(batch, key=lambda x: len(x[0]), reverse=True)
+        if sort:
+            batch = sorted(batch, key=lambda x: len(x[0]), reverse=True)
         X_batch = [sample[0] for sample in batch]
         Y_batch = [sample[1] for sample in batch]
         lengths = [len(x) for x in X_batch]
@@ -365,7 +439,8 @@ def convert_to_tensor(batch, PAD=0, mode='pair'):
         return X_tensor, Y_tensor, mask_tensor, length_tensor
     
     else:
-        batch = sorted(batch, key=lambda x: len(x), reverse=True)
+        if sort:
+            batch = sorted(batch, key=lambda x: len(x), reverse=True)
         lengths = [len(x) for x in batch]
         max_len = lengths[0]
         assert max(lengths) == max_len, ('Something goes wrong, please check carefully.')
@@ -411,10 +486,14 @@ def construct_vocab(corpus=None, corpus_file=None, save_path=None, vocab_name=No
 
     return vocab
 
+# <========== The next function is used to construct a label vocabulary ==========>
 def construct_label_vocab(labels):
+    '''
+    `labels` is a list. DON'T use `str` type.
+    '''
     return {label: i for i, label in enumerate(labels)}
 
-# <========== The next function is used to update learning rate ==========>oara
+# <========== The next function is used to calculate CrossEntropy loss with mask ==========>
 def CrossEntropyWithMask(logits, labels, mask, lengths):
     '''
         logits: 3D tensor, shape of (batch_size, seq_len, output_size)
@@ -441,3 +520,23 @@ def LoadData(dataset, batch_size):
     
     if start < size:
         yield dataset[start:]
+
+# <========== The next function is used to calculate the number of parameters of a model ==========>
+def calculate_params(model, modules=None):
+    '''
+    If `module` is not given, this function will calculate all the number of params. in the model, otherwise, 
+    it'll calculate the # params. of the given modules.
+        modules: a list of string, each string is a module name.
+    '''
+    number = 0
+    if modules is None:
+        for param in model.params():
+            number += torch.numel(param)
+    else:
+        for module in modules:
+            for param in getattr(model, module).params():
+                number += torch.numel(param)
+    print('='*80)
+    print('The number of parameters of ' + ('"model"' if modules is None else ' & '.join(modules) + ' is: %d.') % number)
+    print('='*80)
+    return number
