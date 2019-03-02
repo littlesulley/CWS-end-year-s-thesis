@@ -38,6 +38,7 @@ parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate.')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
 parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate.')
 parser.add_argument('--epochs', type=int, default=10, help='Number of epochs.')
+parser.add_argument('--decay_rate', type=float, default=0.85, help='The rate of learning rate decay at end of each epoch.')
 parser.add_argument('--use_cuda', action='store_true', default=True, help='Whether to use GPU.')
 
 # the next arguments can be frozen.
@@ -59,6 +60,7 @@ dropout = args.dropout
 batch_size = args.batch_size
 lr = args.lr
 epochs = args.epochs
+decay_rate = args.decay_rate
 use_cuda = args.use_cuda
 interval_report = args.interval_report
 interval_write = args.interval_write
@@ -86,7 +88,7 @@ if use_cuda:
     model = model.cuda()
 
 optimizer = optim.Adam(model.parameters(), lr=lr)
-scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=decay_rate)
 
 if train_path != '':
     train_dataset = CWSDataset(train_path, type=data_type)
@@ -242,7 +244,7 @@ if model_path == '':
         else:
             f1 = 2.0 * precision * recall / (precision + recall)   
 
-        scheduler.step(f1)
+        scheduler.step()
 
         valid_epoch_f1.append(f1)
         if best_f1 < f1:
