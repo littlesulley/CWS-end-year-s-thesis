@@ -291,7 +291,7 @@ else:
 
     save_path = (save_pred_path if save_pred_path != '' else eval_path) + '_pred'
     print(save_path)
-    for current_batch in LoadData(test_dataset, batch_size=1):
+    for i, current_batch in enumerate(LoadData(test_dataset, batch_size=1)):
         
         batch_indexed = convert_to_index(current_batch, vocab, label_vocab=label_vocab, mode='single')
         X_tensor, mask_tensor, length_tensor = convert_to_tensor(batch_indexed, mode='single', sort=False)
@@ -305,7 +305,7 @@ else:
 
         batch_label = CWSDataset.tensor_label_to_str(Y_pred, mask_tensor, label_vocab)
         
-        CWSDataset.unsegmented_to_segmented(current_batch, batch_label, save_seg_text_file=save_path, rewrite=False, type=data_type)
+        CWSDataset.unsegmented_to_segmented(current_batch, batch_label, save_seg_text_file=save_path, rewrite=(False if i != 0 else True), type=data_type)
 
     print('='*80)
     print('Finish Prediction, save to %s.' % (save_path))
