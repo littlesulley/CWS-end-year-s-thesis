@@ -48,8 +48,7 @@ script takes three arguments:
 You must not mix character encodings when invoking the scoring
 script. For example:
 
-% perl scripts/score gold/cityu_training_words.utf8 \
-    gold/cityu_test_gold.utf8 test_segmentation.utf8 > score.ut8
+% perl scripts/score gold/cityu_training_words.utf8 gold/cityu_test_gold.utf8 test_segmentation.utf8 > score.ut8
 
 * Licensing
 

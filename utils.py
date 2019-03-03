@@ -131,7 +131,7 @@ class CWSDataset(Dataset):
                 assert len(sample[0]) == len(sample[1]), ('Whoops, something goes wrong.')
         
         else:
-            self.lines = data_lines
+            self.lines = [line for line in data_lines if len(line) > 0]
 
     def __len__(self):
         return len(self.lines)
@@ -192,7 +192,7 @@ class CWSDataset(Dataset):
         for i in range(batch_size):
             unseg = unseg_text[i]
             label = labels[i]
-            seg = []
+            seg = ""
 
             sentence_len = len(unseg)
 
@@ -205,14 +205,14 @@ class CWSDataset(Dataset):
                         continue   # if it has reached EOS, we do nothing
                     else:
                         seg += delimiter # if it hasn't reached EOS, we need to add delimiter
-                seg += '\n'
             
+            seg += '\n'
             seg_text.append(seg)
-        
+            
         if save_seg_text_file is not None:
-            with open(save_seg_text_file, 'w' if rewrite == True else 'a', encoding='utf8') as fout:
+            with open(save_seg_text_file, 'w' if rewrite == True else 'a', encoding='utf-8') as fout:
                 fout.writelines(seg_text)
-        
+
         return seg_text
 
     @classmethod
@@ -225,14 +225,14 @@ class CWSDataset(Dataset):
         index_vocab = {value: key for key, value in label_vocab.items()}
 
         batch_size = len(tensor_label)
-        seq_len = tensor_label.size()
+        seq_len = tensor_label.size(1)
 
         labels = []
         for i in range(batch_size):
             label = ""
             for j in range(seq_len):
                 if mask[i][j] == 1:
-                    label += index_vocab[tensor_label[i][j]]
+                    label += index_vocab[tensor_label[i][j].item()]
                 else:
                     break
             labels.append(label)
@@ -443,12 +443,13 @@ def convert_to_tensor(batch, PAD=0, mode='pair', sort=True):
         if sort:
             batch = sorted(batch, key=lambda x: len(x), reverse=True)
         lengths = [len(x) for x in batch]
-        max_len = lengths[0]
-        assert max(lengths) == max_len, ('Something goes wrong, please check carefully.')
+        max_len = max(lengths)
+        if sort:
+            assert max(lengths) == max_len, ('Something goes wrong, please check carefully.')
         length_tensor = torch.LongTensor(lengths)
 
         batch_padded = [x + [PAD] * (max_len - len(x)) for x in batch]
-        batch_tensor = torch.longTensor(batch_padded)
+        batch_tensor = torch.LongTensor(batch_padded)
         mask_tensor = torch.ne(batch_tensor, PAD)
 
         return batch_tensor, mask_tensor, length_tensor

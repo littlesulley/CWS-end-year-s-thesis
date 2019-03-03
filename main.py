@@ -35,6 +35,7 @@ parser.add_argument('--data_type', type=str, default='PKU')
 parser.add_argument('--train_path', type=str, default='',help='Training data path.')
 parser.add_argument('--dev_path', type=str, default='', help='Development data path.')
 parser.add_argument('--eval_path', type=str, default='', help='Evaluation data path.')
+parser.add_argument('--save_pred_path', type=str, default='', help='Save predictions path.')
 parser.add_argument('--vocab_path', type=str, default='', help='Vocabulary path.')
 parser.add_argument('--layers', type=int, default=2, help='Lstm layers.')
 parser.add_argument('--embed_dim', type=int, default=100, help='Embedding dimension.')
@@ -58,6 +59,7 @@ data_type = args.data_type
 train_path = args.train_path
 dev_path = args.dev_path
 eval_path = args.eval_path
+save_pred_path = args.save_pred_path
 layers = args.layers
 embed_dim = args.embed_dim
 hidden_dim = args.hidden_dim
@@ -104,7 +106,7 @@ if train_path != '':
 if dev_path != '':
     dev_dataset = CWSDataset(dev_path, type=data_type)
 if eval_path != '':
-    test_dataset =CWSDataset(eval_path, type=data_type, mode='single')
+    test_dataset =CWSDataset(eval_path, type=data_type, mode='single', sort=False)
 
 # <========== if `model_path` is not provided, training procedure will be executed =========>
 if model_path == '':
@@ -281,51 +283,24 @@ else:
     calculate_params(model)
     print('='*50)
 
-    total = 0
-    right = 0
-    data_dict = {}
-    for i in label_vocab.values():
-        data_dict[i] = {'TP': 0, 'FP': 0, 'FN': 0}
-
-    for current_batch in LoadData(test_dataset, batch_size):
-            
-        batch_indexed = convert_to_index(current_batch, vocab, label_vocab=label_vocab)
-        X_tensor, Y_tensor, mask_tensor, length_tensor = convert_to_tensor(batch_indexed)
+    save_path = (save_pred_path if save_pred_path != '' else eval_path) + '_pred'
+    print(save_path)
+    for current_batch in LoadData(test_dataset, batch_size=1):
+        
+        batch_indexed = convert_to_index(current_batch, vocab, label_vocab=label_vocab, mode='single')
+        X_tensor, mask_tensor, length_tensor = convert_to_tensor(batch_indexed, mode='single', sort=False)
         if use_cuda:
             X_tensor = X_tensor.cuda()
-            Y_tensor = Y_tensor.cuda()
             mask_tensor = mask_tensor.cuda()
             length_tensor = length_tensor.cuda()
             
         logits = model(X_tensor, length_tensor)
         _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
 
-        _, _, _, batch_data_dict = calculate_f1(Y_tensor, Y_pred, labels=[0, 1, 2, 3], mask=mask_tensor)
-        for label in data_dict.keys():
-            data_dict[label]['TP'] += batch_data_dict[label]['TP']
-            data_dict[label]['FP'] += batch_data_dict[label]['FP']
-            data_dict[label]['FN'] += batch_data_dict[label]['FN']
-
-    labels_precision = []
-    labels_recall = []
-    for label in data_dict.keys():
-        label_TP = data_dict[label]['TP']
-        label_FP = data_dict[label]['FP']
-        label_FN = data_dict[label]['FN']
-        if label_TP == 0:
-            label_precision = label_recall = 0.
-        else:
-            label_precision = 1.0 * label_TP / (label_TP + label_FP)
-            label_recall = 1.0 * label_TP / (label_TP + label_FN)
-        labels_precision.append(label_precision)
-        labels_recall.append(label_recall)
-    precision = sum(labels_precision) / len(labels_precision)
-    recall = sum(labels_recall) / len(labels_recall)
-    if precision == 0 or recall == 0:
-        f1 = 0
-    else:
-        f1 = 2.0 * precision * recall / (precision + recall)   
+        batch_label = CWSDataset.tensor_label_to_str(Y_pred, mask_tensor, label_vocab)
+        
+        CWSDataset.unsegmented_to_segmented(current_batch, batch_label, save_seg_text_file=save_path, rewrite=False, type=data_type)
 
     print('='*80)
-    print('Finish Evaluation, precision is: %-6.4f, recall is: %-6.4f, F1 is: %-6.4f' % (precision, recall, f1))
+    print('Finish Prediction, save to %s.' % (save_path))
     print('='*80)
