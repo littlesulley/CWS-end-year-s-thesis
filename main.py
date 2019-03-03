@@ -270,7 +270,7 @@ if model_path == '':
             best_precision = precision
             best_recall = recall
             best_f1 = f1
-            torch.save(model.state_dict(), os.path.join(SAVE_DIR, 'best_{:.4f}'.format(f1)))
+            torch.save(model.state_dict(), os.path.join(SAVE_DIR, 'model'))
         print('='*80)
         print('[Epoch: %4d] Current loss is %-6.4f, Current accuracy is %-6.4f, best accuracy is %-6.4f. Current F1 is %-6.4f, best F1 is %-6.4f' % 
                 (current_epoch, total_loss, accuracy, best_acc, f1, best_f1))
