@@ -51,6 +51,7 @@ parser.add_argument('--use_cuda', action='store_true', default=True, help='Wheth
 parser.add_argument('--interval_report', type=int, default=10, help='Interval to report.')
 parser.add_argument('--interval_write', type=int, default=10, help='Record while training.')
 parser.add_argument('--model', type=str, default='', help='Path of trained model.')
+parser.add_argument('--inplace_test', action='store_true', default=False, help='Whether to test in place.')
 
 args = parser.parse_args()
 print(args)
@@ -289,23 +290,76 @@ else:
     calculate_params(model)
     print('='*50)
 
-    save_path = (save_pred_path if save_pred_path != '' else eval_path) + '_pred'
-    print(save_path)
-    for i, current_batch in enumerate(LoadData(test_dataset, batch_size=1)):
-        
-        batch_indexed = convert_to_index(current_batch, vocab, label_vocab=label_vocab, mode='single')
-        X_tensor, mask_tensor, length_tensor = convert_to_tensor(batch_indexed, mode='single', sort=False)
-        if use_cuda:
-            X_tensor = X_tensor.cuda()
-            mask_tensor = mask_tensor.cuda()
-            length_tensor = length_tensor.cuda()
+    if args.inplace_test is False:
+        save_path = (save_pred_path if save_pred_path != '' else eval_path) + '_pred'
+        print(save_path)
+        for i, current_batch in enumerate(LoadData(test_dataset, batch_size=1)):
             
-        logits = model(X_tensor, length_tensor)
-        _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
+            batch_indexed = convert_to_index(current_batch, vocab, label_vocab=label_vocab, mode='single')
+            X_tensor, mask_tensor, length_tensor = convert_to_tensor(batch_indexed, mode='single', sort=False)
+            if use_cuda:
+                X_tensor = X_tensor.cuda()
+                mask_tensor = mask_tensor.cuda()
+                length_tensor = length_tensor.cuda()
+                
+            logits = model(X_tensor, length_tensor)
+            _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
 
-        batch_label = CWSDataset.tensor_label_to_str(Y_pred, mask_tensor, label_vocab)
-        
-        CWSDataset.unsegmented_to_segmented(current_batch, batch_label, save_seg_text_file=save_path, rewrite=(False if i != 0 else True), type=data_type)
+            batch_label = CWSDataset.tensor_label_to_str(Y_pred, mask_tensor, label_vocab)
+            
+            CWSDataset.unsegmented_to_segmented(current_batch, batch_label, save_seg_text_file=save_path, rewrite=(False if i != 0 else True), type=data_type)
+    else:
+        print('===== Start testing in place =====')
+        total = 0
+        right = 0
+        for i in label_vocab.values():
+            data_dict[i] = {'TP': 0, 'FP': 0, 'FN': 0}
+        for i, current_batch in enumerate(LoadData(test_dataset, batch_size=batch_size)):
+
+            batch_indexed = convert_to_index(current_batch, vocab, label_vocab=label_vocab)
+            X_tensor, Y_tensor, mask_tensor, length_tensor = convert_to_tensor(batch_indexed)
+            if use_cuda:
+                X_tensor = X_tensor.cuda()
+                Y_tensor = Y_tensor.cuda()
+                mask_tensor = mask_tensor.cuda()
+                length_tensor = length_tensor.cuda()
+
+            logits = model(X_tensor, length_tensor)
+            _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
+
+            batch_right, batch_total, _ = calculate_accuracy(Y_tensor, Y_pred, mask_tensor)
+            _, _, _, batch_data_dict = calculate_f1(Y_tensor, Y_pred, labels=[0, 1, 2, 3], mask=mask_tensor)
+            right += batch_right
+            total += batch_total
+            for label in data_dict.keys():
+                data_dict[label]['TP'] += batch_data_dict[label]['TP']
+                data_dict[label]['FP'] += batch_data_dict[label]['FP']
+                data_dict[label]['FN'] += batch_data_dict[label]['FN']
+
+        accuracy = 1.0 * right / total
+
+        labels_precision = []
+        labels_recall = []
+        for label in data_dict.keys():
+            label_TP = data_dict[label]['TP']
+            label_FP = data_dict[label]['FP']
+            label_FN = data_dict[label]['FN']
+            if label_TP == 0:
+                label_precision = label_recall = 0.
+            else:
+                label_precision = 1.0 * label_TP / (label_TP + label_FP)
+                label_recall = 1.0 * label_TP / (label_TP + label_FN)
+            labels_precision.append(label_precision)
+            labels_recall.append(label_recall)
+
+        precision = sum(labels_precision) / len(labels_precision)
+        recall = sum(labels_recall) / len(labels_recall)
+        if precision == 0 or recall == 0:
+            f1 = 0
+        else:
+            f1 = 2.0 * precision * recall / (precision + recall)
+        print('Validation accuracy is %-6.4f, precision is %-6.4f, recall is %-6.4f, F1 is %-6.4f.' % 
+                (accuracy, precision, recall, f1))
 
     print('='*80)
     print('Finish Prediction, save to %s.' % (save_path))

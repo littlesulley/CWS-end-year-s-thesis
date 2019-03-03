@@ -243,6 +243,7 @@ class CWSLstm(nn.Module):
                pretrained_embedding=None,
                dropout=0.2,
                use_CRF=False,
+               predict_length=False,
                **kwargs):
         super(CWSLstm, self).__init__()
         if vocab_size is None:
@@ -292,3 +293,33 @@ class CWSLstm(nn.Module):
             pass
 
         return outputs
+
+class CWSNWindowCNN(nn.Module):
+    def __init__(self,
+                 window_size=3,
+                 hidden_dim=256, 
+                 embed_dim=100,
+                 pretrained_embedding=None,
+                 layers=2, 
+                 output_size=4,
+                 vocab_size=None,
+                 dropout=0.2):
+        super(CWSNWindowCNN, self).__init__()
+        if vocab_size is None:
+            if pretrained_embedding is None:
+                raise ValueError('You should either provide `vocab_size` or `pretrained_embedding`.')
+            else:
+                self.embedding = pretrained_embedding
+                self.vocab_size = pretrained_embedding.size(0)
+                self.embed_dim = pretrained_embedding.size(1)
+        else:
+            self.vocab_size = vocab_size
+            self.embed_dim = embed_dim
+            self.embedding = nn.Embedding(vocab_size, embed_dim)
+        
+        self.layers = layers 
+        self.hidden_dim = hidden_dim
+        self.output_size = output_size
+
+    def forward(self):
+        pass
