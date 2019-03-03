@@ -206,6 +206,7 @@ if model_path == '':
         print('='*5 + ' Starting validating! ' + '='*5)
         model.eval()
 
+        total_loss = 0.0
         total = 0
         right = 0
         for i in label_vocab.values():
@@ -222,6 +223,10 @@ if model_path == '':
                 length_tensor = length_tensor.cuda()
             
             logits = model(X_tensor, length_tensor)
+            loss = CrossEntropyWithMask(logits, Y_tensor, mask=mask_tensor, lengths=length_tensor)
+            current_loss = loss.item()
+            total_loss += current_loss
+
             _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
 
             batch_right, batch_total, _ = calculate_accuracy(Y_tensor, Y_pred, mask_tensor)
@@ -267,7 +272,8 @@ if model_path == '':
             best_f1 = f1
             torch.save(model.state_dict(), os.path.join(SAVE_DIR, 'best_{:.4f}'.format(f1)))
         print('='*80)
-        print('[Epoch: %4d]  Current accuracy is %-6.4f, best accuracy is %-6.4f. Current F1 is %-6.4f, best F1 is %-6.4f' % (current_epoch, accuracy, best_acc, f1, best_f1))
+        print('[Epoch: %4d] Current loss is %-6.4f, Current accuracy is %-6.4f, best accuracy is %-6.4f. Current F1 is %-6.4f, best F1 is %-6.4f' % 
+                (current_epoch, total_loss, accuracy, best_acc, f1, best_f1))
         print('='*80)
 
     print('='*5 + ' Training finished! The best precision is: %-6.4f, recall is: %-6.4f, F1 is: %-6.4f, accuracy is: %-6.4f' % (best_precision, best_recall, best_f1, best_acc) + '='*5)
