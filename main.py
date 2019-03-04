@@ -117,7 +117,10 @@ if train_path != '':
 if dev_path != '':
     dev_dataset = CWSDataset(dev_path, type=data_type)
 if eval_path != '':
-    test_dataset =CWSDataset(eval_path, type=data_type, mode='single', sort=False)
+    if args.inplace_test is False:
+        test_dataset =CWSDataset(eval_path, type=data_type, mode='single', sort=False)
+    else:
+        test_dataset =CWSDataset(eval_path, type=data_type)
 
 # <========== if `model_path` is not provided, training procedure will be executed =========>
 if model_path == '':
@@ -301,7 +304,7 @@ else:
     print('='*50)
 
     if args.inplace_test is False:
-        save_path = (save_pred_path if save_pred_path != '' else eval_path) + '_pred'
+        save_path = os.path.join(SAVE_DIR, data_type) + '_pred'
         print(save_path)
         for i, current_batch in enumerate(LoadData(test_dataset, batch_size=1)):
             
@@ -318,6 +321,10 @@ else:
             batch_label = CWSDataset.tensor_label_to_str(Y_pred, mask_tensor, label_vocab)
             
             CWSDataset.unsegmented_to_segmented(current_batch, batch_label, save_seg_text_file=save_path, rewrite=(False if i != 0 else True), type=data_type)
+        print('='*80)
+        print('Finish Prediction, save to %s.' % (save_path))
+        print('='*80)
+
     else:
         print('===== Start testing in place =====')
         total = 0
@@ -372,6 +379,3 @@ else:
         print('Validation accuracy is %-6.4f, precision is %-6.4f, recall is %-6.4f, F1 is %-6.4f.' % 
                 (accuracy, precision, recall, f1))
 
-    print('='*80)
-    print('Finish Prediction, save to %s.' % (save_path))
-    print('='*80)
