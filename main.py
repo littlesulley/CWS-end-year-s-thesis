@@ -45,6 +45,7 @@ parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate.')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
 parser.add_argument('--lr', type=float, default=0.01, help='Initial learning rate.')
 parser.add_argument('--epochs', type=int, default=100, help='Number of epochs.')
+parser.add_argument('--decay_step', type=int, default=10, help='Steps to decay.')
 parser.add_argument('--decay_rate', type=float, default=0.5, help='The rate of learning rate decay at end of each epoch.')
 parser.add_argument('--use_cuda', action='store_true', default=True, help='Whether to use GPU.')
 parser.add_argument('--shuffle', action='store_true', default=True, help='Whether to shuffle for each epoch.')
@@ -71,6 +72,7 @@ dropout = args.dropout
 batch_size = args.batch_size
 lr = args.lr
 epochs = args.epochs
+decay_step = args.decay_step
 decay_rate = args.decay_rate
 shuffle = args.shuffle
 predict_length = args.predict_length 
@@ -106,7 +108,7 @@ if use_cuda:
     model = model.cuda()
 
 optimizer = optim.Adam(model.parameters(), lr=lr,)
-scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=decay_rate, step_size=10)
+scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=decay_rate, step_size=decay_step)
 
 if train_path != '':
     train_dataset = CWSDataset(train_path, type=data_type)

@@ -266,6 +266,7 @@ class CWSLstm(nn.Module):
         self.dropout_layer = nn.Dropout(dropout)
         self.lstm_layer = nn.LSTM(self.embed_dim, hidden_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
         self.output_layer = nn.Linear(2 * hidden_dim, output_size)
+
         if use_CRF:
             #TODO: implement CRF layer module.
             pass 
@@ -293,6 +294,9 @@ class CWSLstm(nn.Module):
             pass
 
         return outputs
+
+    def init_orthogonal(self, tensor):
+        nn.init.orthogonal_(tensor)
 
 class CWSNWindowCNN(nn.Module):
     def __init__(self,
