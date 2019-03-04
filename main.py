@@ -127,6 +127,7 @@ if model_path == '':
 
     train_size = len(train_dataset)
     n_iters = (train_size // batch_size) if train_size % batch_size == 0 else (train_size // batch_size + 1)
+    early_stop = 0
 
     best_precision = 0.0
     best_recall = 0.0
@@ -281,10 +282,15 @@ if model_path == '':
 
         valid_epoch_f1.append(f1)
         if best_f1 < f1:
+            early_stop = 0
             best_precision = precision
             best_recall = recall
             best_f1 = f1
             torch.save(model.state_dict(), os.path.join(SAVE_DIR, 'model'))
+        else:
+            early_stop += 1
+            if early_stop == 10:
+                break
         print('='*80)
         print('[Epoch: %4d] Current loss is %-6.4f, Current accuracy is %-6.4f, best accuracy is %-6.4f. Current F1 is %-6.4f, best F1 is %-6.4f' % 
                 (current_epoch, total_loss, accuracy, best_acc, f1, best_f1))
