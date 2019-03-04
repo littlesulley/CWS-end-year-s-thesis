@@ -88,12 +88,16 @@ class Attention(nn.Module):
     def forward(self,
                 queries,
                 keys,
-                values):
+                values,
+                query_mask=None,
+                key_mask=None,
+                value_mask=None):
         """
         args:
             queries: 3D tensor, shape of (batch_size, query_len, hidden_dim)
             keys: 3D tensor, shape of (batch_size, key_len, hidden_dim)
             values: 3D tensor, shape of (batch_size, value_len, hidden_dim)
+            *_mask: 2D tensor, shape of (batch_size, *_len)
             In fact, `key_len` == `value_len`
         returns:
             a 3D tensor, shape of (batch_size, query_len, hidden_dim)
@@ -142,6 +146,7 @@ class LanguageModel(nn.Module):
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
         self.lstm_layer = nn.LSTM(embed_dim, hidden_dim, layers=layers, dropout=dropout, batch_first=True)
         self.output_layer = nn.Linear(2 * hidden_dim, vocab_size)
+        self.init_orthogonal(self.lstm_layer.weight)
 
     def forward(self, 
                 inputs, 
@@ -160,6 +165,9 @@ class LanguageModel(nn.Module):
         hiddens, _ = pad_packed_sequence(hiddens, batch_first=True)  # shape of (batch_size, seq_len, 2*hidden_dim)
         outputs = self.output_layer(hiddens)
         return outputs               # shape of (batch_size, seq_len, vocab_size)
+
+    def init_orthogonal(self, tensor):
+        nn.init.orthogonal_(tensor)
 
 class BiLstmClassifier(nn.Module):
     """This module implements a simple BiLSTM->Pooling model for classification."""
@@ -200,6 +208,7 @@ class BiLstmClassifier(nn.Module):
         self.pooling_type = pooling_type
         self.lstm_layer = nn.LSTM(self.embed_dim, hidden_dim, bidirectional=True, batch_first=True, dropout=dropout)
         self.output_layer = nn.Linear(2 * hidden_dim if transition_type == 'concat' else hidden_dim, output_size)
+
 
     def forward(self,
                 inputs,
@@ -266,7 +275,10 @@ class CWSLstm(nn.Module):
         self.dropout_layer = nn.Dropout(dropout)
         self.lstm_layer = nn.LSTM(self.embed_dim, hidden_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
         self.output_layer = nn.Linear(2 * hidden_dim, output_size)
-
+        for params in self.lstm_layer.all_weights:
+            for param in params:
+                if param.ndimension() >= 2:
+                    self.init_orthogonal(param)
         if use_CRF:
             #TODO: implement CRF layer module.
             pass 
@@ -327,3 +339,6 @@ class CWSNWindowCNN(nn.Module):
 
     def forward(self):
         pass
+
+    def init_orthogonal(self, tensor):
+        nn.init.orthogonal_(tensor)

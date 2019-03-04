@@ -51,6 +51,7 @@ parser.add_argument('--use_cuda', action='store_true', default=True, help='Wheth
 parser.add_argument('--shuffle', action='store_true', default=True, help='Whether to shuffle for each epoch.')
 parser.add_argument('--predict_length', action='store_true', default=False, help='Whether to predict the length of a word.')
 parser.add_argument('--predict_oov', action='store_true', default=False, help='Whether to predict oov when encounters one.')
+parser.add_argument('--use_attention', action='store_true', default=False, help='Whether to use attention to predict word spans.')
 
 # the next arguments can be frozen.
 parser.add_argument('--interval_report', type=int, default=10, help='Interval to report.')
@@ -77,6 +78,7 @@ decay_rate = args.decay_rate
 shuffle = args.shuffle
 predict_length = args.predict_length 
 predict_oov = args.predict_oov
+use_attention = args.attention
 use_cuda = args.use_cuda
 interval_report = args.interval_report
 interval_write = args.interval_write
@@ -320,6 +322,7 @@ else:
         print('===== Start testing in place =====')
         total = 0
         right = 0
+        data_dict = {}
         for i in label_vocab.values():
             data_dict[i] = {'TP': 0, 'FP': 0, 'FN': 0}
         for i, current_batch in enumerate(LoadData(test_dataset, batch_size=batch_size)):
