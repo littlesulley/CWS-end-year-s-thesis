@@ -9,7 +9,7 @@ import os
 import sys 
 
 from utils import construct_vocab, construct_label_vocab, CWSDataset, convert_to_index, convert_to_tensor
-from utils import CrossEntropyWithMask, LoadData, calculate_params
+from utils import CrossEntropyWithMask, MSEWithMask, LoadData, calculate_params, convert_to_word_lengths
 from metrics import calculate_f1, calculate_accuracy
 from modules import CWSLstm
 
@@ -50,6 +50,7 @@ parser.add_argument('--decay_rate', type=float, default=0.5, help='The rate of l
 parser.add_argument('--use_cuda', action='store_true', default=True, help='Whether to use GPU.')
 parser.add_argument('--shuffle', action='store_true', default=True, help='Whether to shuffle for each epoch.')
 parser.add_argument('--predict_word', action='store_true', default=False, help='Whether to predict the length of a word.')
+parser.add_argument('--loss_lambda', type=float, default=1e-5, help='The ratio of loss when using `predict_word`.')
 parser.add_argument('--oov_window', type=int, default=0, help='OOV window size. If 0, we don"t use it')
 parser.add_argument('--use_attention', action='store_true', default=False, help='Whether to use attention to predict word spans.')
 
@@ -77,6 +78,7 @@ decay_step = args.decay_step
 decay_rate = args.decay_rate
 shuffle = args.shuffle
 predict_word = args.predict_word 
+loss_lambda = args.predict_word
 oov_window = args.oov_window
 use_attention = args.use_attention
 use_cuda = args.use_cuda
@@ -170,8 +172,19 @@ if model_path == '':
                 mask_tensor = mask_tensor.cuda()
                 length_tensor = length_tensor.cuda()
 
-            logits = model(X_tensor, length_tensor) # shape of (batch_size, seq_len, output_size)
+            if predict_word is False:
+                logits = model(X_tensor, length_tensor, mask_tensor) # shape of (batch_size, seq_len, output_size)
+            else:
+                word_lengths_tensor = convert_to_word_lengths(Y_tensor, length_tensor, label_vocab) # shape of (batch_size, seq_len)\
+                logits, outputs_word_lengths = model(X_tensor, length_tensor, mask_tensor) # outputs_word: shape of (batch_size, seq_len)
+                aux_loss = MSEWithMask(word_lengths_tensor, outputs_word_lengths, mask_tensor)
+
             loss = CrossEntropyWithMask(logits, Y_tensor, mask=mask_tensor, lengths=length_tensor)
+            main_loss_item = loss.item()
+            aux_loss_item = aux_loss.item() if predict_word else 0
+
+            if predict_word:
+                loss = loss + loss_lambda * aux_loss
             current_loss = loss.item()
 
             _, Y_pred = torch.max(logits, dim=-1)
@@ -208,15 +221,15 @@ if model_path == '':
                 else:
                     f1 = 2.0 * precision * recall / (precision + recall)   
 
-                print('[ Epoch: %-4d, Iteration: %-5d / %-5d]  Loss: %-6.2f Precision: %-6.4f, Recall: %-6.4f, F1: %-6.4f, Accuracy: %-6.4f.' %(
-                    current_epoch, current_iter, n_iters, loss, precision, recall, f1, accuracy))
+                print('[ Epoch: %-4d, Iteration: %-5d / %-5d]  Total loss: %-6.2f, Main loss: %-6.2f, Aux loss: %-6.2f, Precision: %-6.4f, Recall: %-6.4f, F1: %-6.4f, Accuracy: %-6.4f.' %(
+                    current_epoch, current_iter, n_iters, current_loss, main_loss_item, aux_loss_item, precision, recall, f1, accuracy))
                 train_iter_f1.append(f1)
         
                 total = 0
                 right = 0
                 for i in label_vocab.values():
                     data_dict[i] = {'TP': 0, 'FP': 0, 'FN': 0}
-                
+
             loss.backward()
             optimizer.step()
 
@@ -240,9 +253,19 @@ if model_path == '':
                 mask_tensor = mask_tensor.cuda()
                 length_tensor = length_tensor.cuda()
             
-            logits = model(X_tensor, length_tensor)
+            if predict_word is False:
+                logits = model(X_tensor, length_tensor, mask_tensor) # shape of (batch_size, seq_len, output_size)
+            else:
+                word_lengths_tensor = convert_to_word_lengths(Y_tensor, length_tensor, label_vocab) # shape of (batch_size, seq_len)
+                logits, outputs_word_lengths = model(X_tensor, length_tensor, mask_tensor) # outputs_word: shape of (batch_size, seq_len)
+                aux_loss = MSEWithMask(word_lengths_tensor, outputs_word_lengths, mask_tensor)
+
             loss = CrossEntropyWithMask(logits, Y_tensor, mask=mask_tensor, lengths=length_tensor)
+
+            if predict_word:
+                loss = loss + loss_lambda * aux_loss
             current_loss = loss.item()
+
             total_loss += current_loss
 
             _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
@@ -324,7 +347,11 @@ else:
                 mask_tensor = mask_tensor.cuda()
                 length_tensor = length_tensor.cuda()
                 
-            logits = model(X_tensor, length_tensor)
+            if predict_word is False:
+                logits = model(X_tensor, length_tensor, mask_tensor) # shape of (batch_size, seq_len, output_size)
+            else:
+                logits, _ = model(X_tensor, length_tensor, mask_tensor) # outputs_word: shape of (batch_size, seq_len)
+                
             _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
 
             batch_label = CWSDataset.tensor_label_to_str(Y_pred, mask_tensor, label_vocab)
@@ -351,7 +378,11 @@ else:
                 mask_tensor = mask_tensor.cuda()
                 length_tensor = length_tensor.cuda()
 
-            logits = model(X_tensor, length_tensor)
+            if predict_word is False:
+                logits = model(X_tensor, length_tensor, mask_tensor) # shape of (batch_size, seq_len, output_size)
+            else:
+                logits, _ = model(X_tensor, length_tensor, mask_tensor) # outputs_word: shape of (batch_size, seq_len)
+
             _, Y_pred = torch.max(logits, dim=-1)   # shape of (batch_size, seq_len)
 
             batch_right, batch_total, _ = calculate_accuracy(Y_tensor, Y_pred, mask_tensor)

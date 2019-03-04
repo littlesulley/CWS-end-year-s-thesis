@@ -88,42 +88,49 @@ class Attention(nn.Module):
     def forward(self,
                 queries,
                 keys,
-                values,
-                query_mask=None,
-                key_mask=None,
-                value_mask=None):
+                values, 
+                key_mask=None):
         """
         args:
             queries: 3D tensor, shape of (batch_size, query_len, hidden_dim)
             keys: 3D tensor, shape of (batch_size, key_len, hidden_dim)
             values: 3D tensor, shape of (batch_size, value_len, hidden_dim)
-            *_mask: 2D tensor, shape of (batch_size, *_len)
-            In fact, `key_len` == `value_len`
+            key_mask: 2D tensor, shape of (batch_size, key_len)
         returns:
             a 3D tensor, shape of (batch_size, query_len, hidden_dim)
         """
-        if self.attention_type == 'dot' or self.attention_type == 'self':
-            return self.dot_score(queries, keys, values)
-        elif self.attention_type == 'general':
-            return self.general_score(queries, keys, values)
-        else: 
-            return self.concat_score(queries, keys, values)
+        query_len = queries.size(1)
+        if key_mask is None:
+            key_mask = torch.ones(queries.size()[:2], dtype=torch.uint8)
+        mask = key_mask.unsqueeze(1).expand(-1, query_len, -1)  # shape of (batch_size, query_len, key_len)
 
-    def dot_score(self, queries, keys, values):
-        attended = torch.bmm(queries, keys)                   # shape of (batch_size, query_len, key_len)
+        if self.attention_type == 'dot' or self.attention_type == 'self':
+            return self.dot_score(queries, keys, values, mask)
+        elif self.attention_type == 'general':
+            return self.general_score(queries, keys, values, mask)
+        else: 
+            return self.concat_score(queries, keys, values, mask)
+
+    def dot_score(self, queries, keys, values, mask):
+        attended = torch.bmm(queries, keys.transpose(1, 2))   # shape of (batch_size, query_len, key_len)
+        attended = attended.masked_fill(1 - mask, -np.inf)   # shape of (batch_size, query_len, key_len)
         if self.is_scaled:
             attended = attended / np.sqrt(self.hidden_dim)
         attended = F.softmax(attended, dim=-1)                # shape of (batch_size, query_len, key_len)
         scores = torch.bmm(attended, values)                  # shape of (batch_size, query_len, hidden_dim)
         return scores
 
-    def general_score(self, queries, keys, values):
-        attended = torch.bmm(self.attn(queries), keys)        # shape of (batch_size, query_len, key_len)
-        scores = torch.bmm(attended, values)
+    def general_score(self, queries, keys, values, mask):
+        attended = torch.bmm(self.attn(queries), keys.transpose(1, 2))   # shape of (batch_size, query_len, key_len)
+        attended = attended.masked_fill(1 - mask, -np.inf)               # shape of (batch_size, query_len, key_len)
+        if self.is_scaled:
+            attended = attended / np.sqrt(self.hidden_dim)
+        attended = F.softmax(attended, dim=-1)                # shape of (batch_size, query_len, key_len)
+        scores = torch.bmm(attended, values)                  # shape of (batch_size, query_len, hidden_dim)
         return scores
 
-    def concat_score(self, queries, keys, values):
-        raise NotImplementedError
+    def concat_score(self, queries, keys, values, mask):
+        NotImplementedError
 
 class LanguageModel(nn.Module):
     """This module implements a basic language model."""
@@ -276,19 +283,28 @@ class CWSLstm(nn.Module):
         self.use_attention = use_attention
 
         self.dropout_layer = nn.Dropout(dropout)
-        self.lstm_layer = nn.LSTM(self.embed_dim, hiddem_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
         self.output_layer = nn.Linear(2 * hiddem_dim, output_size)
-        for params in self.lstm_layer.all_weights:
-            for param in params:
-                if param.ndimension() >= 2:
-                    self.init_orthogonal(param)
+
+        if predict_word:
+            self.predict_layer_1 = nn.Linear(2 * hiddem_dim, 100)
+            self.predict_layer_2 = nn.Linear(100, 1)
+        
+        if use_attention is False:
+            self.lstm_layer = nn.LSTM(self.embed_dim, hiddem_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
+        else:
+            self.lstm_layer = nn.ModuleList(nn.LSTM(self.embed_dim, hiddem_dim, batch_first=True, bidirectional=True) for _ in range(layers))
+            self.attention = Attention(self.embed_dim)
+            self.transitions = nn.ModuleList(nn.Linear(2 * hiddem_dim, 3 * self.embed_dim) for _ in range(layers - 1))
+
+        self.init_orthogonal(self.lstm_layer)
         if use_CRF:
             #TODO: implement CRF layer module.
             pass 
 
     def forward(self,
                 inputs,
-                lengths):
+                lengths, 
+                mask=None):
         """
         args:
             inputs: a 2D tensor, shape of (batch_size, seq_len)
@@ -299,21 +315,46 @@ class CWSLstm(nn.Module):
         embeded = self.embedding(inputs)   # shape of (batch_size, seq_len, embedding_dim)
         if self.oov_window != 0:
             embeded = self.predict_unk(inputs, lengths, embeded, self.oov_window)  # shape of (batch_size, seq_len, embedding_dim)
+        prev_layer = self.dropout_layer(embeded)
 
+        if self.use_attention is False:
+            packed = pack_padded_sequence(prev_layer, lengths, batch_first=True)
+            hiddens, _ = self.lstm_layer(packed)
+            padded, _ = pad_packed_sequence(hiddens, batch_first=True) # shape of (batch_size, seq_len, 2*hidden_dim)
+            outputs = self.output_layer(padded)                        # shape of (batch_size, seq_len, output_size)
+        else:
+            for i in range(self.layers - 1):
+                packed = pack_padded_sequence(prev_layer, lengths, batch_first=True)
+                hiddens, _ = self.lstm_layer[i](packed)
+                padded, _ = pad_packed_sequence(hiddens, batch_first=True) # shape of (batch_size, seq_len, 2*hidden_dim)
+                transitted = self.transitions[i](padded)                   # shape of (batch_size, seq_len, 3*embed_dim)
+                Q = transitted[:, :, : self.embed_dim]                     # shape of (batch_size, seq_len, embed_dim)
+                K = transitted[:, :, self.embed_dim: 2 * self.embed_dim]   # shape of (batch_size, seq_len, embed_dim)
+                V = transitted[:, :, 2 * self.embed_dim:]                  # shape of (batch_size, seq_len, embed_dim)
+                attended = self.attention(Q, K, V, mask)             # shape of (batch_size, seq_len, embed_dim)
+                prev_layer = self.dropout_layer(attended)                  # shape of (batch_size, seq_len, embed_dim)
+            packed = pack_padded_sequence(prev_layer, lengths, batch_first=True)
+            hiddens, _ = self.lstm_layer[-1](packed)
+            padded, _ = pad_packed_sequence(hiddens, batch_first=True)     # shape of (batch_size, seq_len, 2*hidden_dim)
+            outputs = self.output_layer(padded)                            # shape of (batch_size, seq_len, output_size)
 
-        embeded = self.dropout_layer(embeded)
-        packed = pack_padded_sequence(embeded, lengths, batch_first=True)
-        hiddens, _ = self.lstm_layer(packed)
-        padded, _ = pad_packed_sequence(hiddens, batch_first=True) # shape of (batch_size, seq_len, 2*hidden_dim)
-        outputs = self.output_layer(padded)  # shape of (batch_size, seq_len, output_size)
-        if self.use_CRF:
-            #TODO
-            pass
+        if self.predict_word:
+            outputs_word = self.predict_layer_2(F.relu(self.dropout_layer(self.predict_layer_1(padded)))).squeeze(2) # shape of (batch_size, seq_len)
+            return outputs, outputs_word
+        else: return outputs
 
-        return outputs
-
-    def init_orthogonal(self, tensor):
-        nn.init.orthogonal_(tensor)
+    def init_orthogonal(self, lstm_layer):
+        if isinstance(lstm_layer, nn.ModuleList):
+            for layer in lstm_layer:
+                for params in layer.all_weights:
+                    for param in params:
+                        if param.ndimension() >= 2:
+                            nn.init.orthogonal_(param)
+        else:
+            for params in lstm_layer.all_weights:
+                for param in params:
+                    if param.ndimension() >= 2:
+                        nn.init.orthogonal_(param)
 
     def predict_unk(self, inputs, lengths, embeded, n_window=2):
         batch_size = inputs.size(0)
@@ -344,4 +385,5 @@ class CWSLstm(nn.Module):
                         embeded[current_batch][current_char] = 1. / n_neighbors * torch.sum(embeded[current_batch][left: current_char], dim=0)
                     else:
                         embeded[current_batch][current_char] = 1. / n_neighbors * torch.sum(embeded[current_batch][current_char+1: right+1], dim=0)
+        
         return embeded

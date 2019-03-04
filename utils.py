@@ -466,6 +466,34 @@ def convert_to_index(batch, vocab, label_vocab=None, mode='pair'):
         batch_index = [[vocab.word_to_index(x_word) for x_word in x] for x in batch]
     return batch_index
 
+
+# <========== The next function is used to convert a mask into word lengths ==========>
+def convert_to_word_lengths(Y_tensor, lengths, label_vocab):
+    '''This is function is used to convert a mask tensor representing a `BIES` scheme labels to word lengths.
+        Y_tensor: 2D tensor, shape of (batch_size, seq_len).
+        lengths: 1D tensor, shape of (batch_size, )
+    '''
+    batch_size = Y_tensor.size(0)
+    length_tensor = torch.zeros_like(Y_tensor, dtype=torch.float).cuda()  # shape of (batch_size, seq_len)
+    index_vocab = {value: key for key, value in label_vocab.items()}
+
+    for i in range(batch_size):
+        sentence_len = lengths[i]
+        start = 0
+        end = 0
+        for j in range(sentence_len):
+            if index_vocab[Y_tensor[i][j].item()] == 'E':
+                end = j 
+                length_tensor[i][start: end + 1] = end + 1 - start 
+            elif index_vocab[Y_tensor[i][j].item()] == 'S':
+                start = end = j
+                length_tensor[i][start: end + 1] = end + 1 - start
+            elif index_vocab[Y_tensor[i][j].item()] == 'B':
+                start = j
+            else:  # 'I'
+                continue 
+    return length_tensor
+
 # <========== The next function is used to construct a vocabulary ==========>
 def construct_vocab(corpus=None, corpus_file=None, save_path=None, vocab_name=None, max_size=50000, min_count=1, level='char'):
     '''Construct a vocab according to `corpus` or `corpus_file`
@@ -509,6 +537,17 @@ def CrossEntropyWithMask(logits, labels, mask, lengths):
     loss = -torch.sum(torch.log(logits_selected).masked_select(mask))
     loss = 1. / total * loss
     return loss
+
+# <========== The next function is used to calculate MSE loss with mask ==========>
+def MSEWithMask(inputs, targets, mask):
+    '''
+        inputs: shape of (batch_size, seq_len)
+        targets: shape of (batch_size, seq_len)
+        mask: shape of (batch_size, seq_len)
+    '''
+    total = torch.sum(mask).item()
+    square = torch.pow(inputs - targets, 2)
+    return 1. / total * torch.sum(square.masked_select(mask))
 
 # <========== The next function is used to load data once per batch ==========>
 def LoadData(dataset, batch_size, shuffle=False):
