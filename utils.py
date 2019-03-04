@@ -511,17 +511,31 @@ def CrossEntropyWithMask(logits, labels, mask, lengths):
     return loss
 
 # <========== The next function is used to load data once per batch ==========>
-def LoadData(dataset, batch_size):
+def LoadData(dataset, batch_size, shuffle=False):
     size = len(dataset)
     start = 0
     end = batch_size
+
+    index_list = list(range(size))
+
+    if shuffle:
+        index_list = torch.randperm(size).tolist()
+
     while end <= size:
-        yield dataset[start:end]
+        current_index = index_list[start:end]
+        batch = []
+        for idx in current_index:
+            batch.append(dataset[idx])
+        yield batch
         start = end 
         end = end + batch_size
     
     if start < size:
-        yield dataset[start:]
+        current_index = index_list[start:]
+        batch = []
+        for idx in current_index:
+            batch.append(dataset[idx])
+        yield batch
 
 # <========== The next function is used to calculate the number of parameters of a model ==========>
 def calculate_params(model, modules=None):

@@ -37,20 +37,23 @@ parser.add_argument('--dev_path', type=str, default='', help='Development data p
 parser.add_argument('--eval_path', type=str, default='', help='Evaluation data path.')
 parser.add_argument('--save_pred_path', type=str, default='', help='Save predictions path.')
 parser.add_argument('--vocab_path', type=str, default='', help='Vocabulary path.')
+parser.add_argument('--model', type=str, default='', help='Path of trained model.')
 parser.add_argument('--layers', type=int, default=2, help='Lstm layers.')
 parser.add_argument('--embed_dim', type=int, default=100, help='Embedding dimension.')
-parser.add_argument('--hidden_dim', type=int, default=256, help='Lstm hiddem dimension for each direction.')
+parser.add_argument('--hidden_dim', type=int, default=300, help='Lstm hiddem dimension for each direction.')
 parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate.')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
-parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate.')
-parser.add_argument('--epochs', type=int, default=10, help='Number of epochs.')
-parser.add_argument('--decay_rate', type=float, default=0.85, help='The rate of learning rate decay at end of each epoch.')
+parser.add_argument('--lr', type=float, default=0.01, help='Initial learning rate.')
+parser.add_argument('--epochs', type=int, default=100, help='Number of epochs.')
+parser.add_argument('--decay_rate', type=float, default=0.5, help='The rate of learning rate decay at end of each epoch.')
 parser.add_argument('--use_cuda', action='store_true', default=True, help='Whether to use GPU.')
+parser.add_argument('--shuffle', action='store_true', default=True, help='Whether to shuffle for each epoch.')
+parser.add_argument('--predict_length', action='store_true', default=False, help='Whether to predict the length of a word.')
+parser.add_argument('--predict_oov', action='store_true', default=False, help='Whether to predict oov when encounters one.')
 
 # the next arguments can be frozen.
 parser.add_argument('--interval_report', type=int, default=10, help='Interval to report.')
 parser.add_argument('--interval_write', type=int, default=10, help='Record while training.')
-parser.add_argument('--model', type=str, default='', help='Path of trained model.')
 parser.add_argument('--inplace_test', action='store_true', default=False, help='Whether to test in place.')
 
 args = parser.parse_args()
@@ -69,6 +72,9 @@ batch_size = args.batch_size
 lr = args.lr
 epochs = args.epochs
 decay_rate = args.decay_rate
+shuffle = args.shuffle
+predict_length = args.predict_length 
+predict_oov = args.predict_oov
 use_cuda = args.use_cuda
 interval_report = args.interval_report
 interval_write = args.interval_write
@@ -99,8 +105,8 @@ print('='*50)
 if use_cuda:
     model = model.cuda()
 
-optimizer = optim.Adam(model.parameters(), lr=lr)
-scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=decay_rate)
+optimizer = optim.Adam(model.parameters(), lr=lr,)
+scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=decay_rate, step_size=10)
 
 if train_path != '':
     train_dataset = CWSDataset(train_path, type=data_type)
@@ -141,7 +147,7 @@ if model_path == '':
         print('='*30)
         print('Start training at epoch: %d' % current_epoch)
         print('='*30)
-        for iters, current_batch in enumerate(LoadData(train_dataset, batch_size)):
+        for iters, current_batch in enumerate(LoadData(train_dataset, batch_size, shuffle=shuffle)):
             model.zero_grad()
             current_iter = iters + 1 
 
