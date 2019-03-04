@@ -220,9 +220,7 @@ class BiLstmClassifier(nn.Module):
         returns:
             outputs: a 3D tensor, shape of (batch_size, seq_len, output_size)
         """
-        batch_size = inputs.size(0)
         seq_len = inputs.size(1)
-
         embeded = self.embedding(inputs)
         packed = pack_padded_sequence(embeded, lengths, batch_first=True)
         hiddens, _ = self.lstm_layer(packed)
@@ -244,15 +242,17 @@ class BiLstmClassifier(nn.Module):
 
 class CWSLstm(nn.Module):
     def __init__(self,
-               layers=2,
-               hidden_dim=256,
-               output_size=4,
-               embed_dim=300,
-               vocab_size=None,
-               pretrained_embedding=None,
-               dropout=0.2,
-               use_CRF=False,
-               predict_length=False,
+                layers=2,
+                hiddem_dim=256,
+                output_size=4,
+                embed_dim=300,
+                vocab_size=None,
+                pretrained_embedding=None,
+                dropout=0.2,
+                use_CRF=False,
+                oov_window=0,
+                predict_word=False,
+                use_attention=False,
                **kwargs):
         super(CWSLstm, self).__init__()
         if vocab_size is None:
@@ -268,13 +268,16 @@ class CWSLstm(nn.Module):
             self.embedding = nn.Embedding(vocab_size, embed_dim)
         
         self.layers = layers 
-        self.hidden_dim = hidden_dim
+        self.hiddem_dim = hiddem_dim
         self.output_size = output_size
         self.use_CRF = use_CRF
+        self.oov_window = oov_window
+        self.predict_word = predict_word
+        self.use_attention = use_attention
 
         self.dropout_layer = nn.Dropout(dropout)
-        self.lstm_layer = nn.LSTM(self.embed_dim, hidden_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
-        self.output_layer = nn.Linear(2 * hidden_dim, output_size)
+        self.lstm_layer = nn.LSTM(self.embed_dim, hiddem_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
+        self.output_layer = nn.Linear(2 * hiddem_dim, output_size)
         for params in self.lstm_layer.all_weights:
             for param in params:
                 if param.ndimension() >= 2:
@@ -293,9 +296,11 @@ class CWSLstm(nn.Module):
         returns:
             outputs: a 3D tensor, shape of (batch_size, seq_len, output_size)
         """
-        batch_size = inputs.size(0)
-        seq_len = inputs.size(1)
         embeded = self.embedding(inputs)   # shape of (batch_size, seq_len, embedding_dim)
+        if self.oov_window != 0:
+            embeded = self.predict_unk(inputs, lengths, embeded, self.oov_window)  # shape of (batch_size, seq_len, embedding_dim)
+
+
         embeded = self.dropout_layer(embeded)
         packed = pack_padded_sequence(embeded, lengths, batch_first=True)
         hiddens, _ = self.lstm_layer(packed)
@@ -310,35 +315,33 @@ class CWSLstm(nn.Module):
     def init_orthogonal(self, tensor):
         nn.init.orthogonal_(tensor)
 
-class CWSNWindowCNN(nn.Module):
-    def __init__(self,
-                 window_size=3,
-                 hidden_dim=256, 
-                 embed_dim=100,
-                 pretrained_embedding=None,
-                 layers=2, 
-                 output_size=4,
-                 vocab_size=None,
-                 dropout=0.2):
-        super(CWSNWindowCNN, self).__init__()
-        if vocab_size is None:
-            if pretrained_embedding is None:
-                raise ValueError('You should either provide `vocab_size` or `pretrained_embedding`.')
-            else:
-                self.embedding = pretrained_embedding
-                self.vocab_size = pretrained_embedding.size(0)
-                self.embed_dim = pretrained_embedding.size(1)
-        else:
-            self.vocab_size = vocab_size
-            self.embed_dim = embed_dim
-            self.embedding = nn.Embedding(vocab_size, embed_dim)
-        
-        self.layers = layers 
-        self.hidden_dim = hidden_dim
-        self.output_size = output_size
+    def predict_unk(self, inputs, lengths, embeded, n_window=2):
+        batch_size = inputs.size(0)
 
-    def forward(self):
-        pass
-
-    def init_orthogonal(self, tensor):
-        nn.init.orthogonal_(tensor)
+        for current_batch in range(batch_size):
+            current_batch_len = lengths[current_batch]
+            for current_char in range(current_batch_len):
+                if inputs[current_batch][current_char] != 1: # <UNK> is 1
+                    continue  
+                if current_char == 0:
+                    left = 0
+                    right = (current_batch_len - 1 if current_char + n_window >= current_batch_len else current_char + n_window)
+                    n_neighbors = right - left
+                elif current_batch == current_batch_len - 1:
+                    right = current_batch_len - 1
+                    left = (0 if current_char - n_window < 0 else current_char - n_window)
+                    n_neighbors = right - left
+                else:
+                    left = (0 if current_char - n_window < 0 else current_char - n_window)
+                    right = (current_batch_len - 1 if current_char + n_window >= current_batch_len else current_char + n_window)
+                    n_neighbors = right - left
+                
+                if n_neighbors != 0:
+                    if current_char != current_batch_len - 1 and current_char != 0:
+                        embeded[current_batch][current_char] = 1. / n_neighbors * \
+                                (torch.sum(embeded[current_batch][left: current_char], dim=0) + torch.sum(embeded[current_batch][current_char+1: right+1], dim=0))
+                    elif current_char == current_batch_len - 1:
+                        embeded[current_batch][current_char] = 1. / n_neighbors * torch.sum(embeded[current_batch][left: current_char], dim=0)
+                    else:
+                        embeded[current_batch][current_char] = 1. / n_neighbors * torch.sum(embeded[current_batch][current_char+1: right+1], dim=0)
+        return embeded

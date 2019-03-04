@@ -457,7 +457,7 @@ def convert_to_tensor(batch, PAD=0, mode='pair', sort=True):
 # <========== The next function is used to index ==========>
 def convert_to_index(batch, vocab, label_vocab=None, mode='pair'):
     '''Convert a batch into index.
-    Make sure `batch` is a list of tuples, where each tuple consists of an `x_sample` and a `y_sample`, if mode is `train`.
+    Make sure `batch` is a list of tuples, where each tuple consists of an `x_sample` and a `y_sample`, if mode is `pair`.
     '''
     if mode == 'pair':
         assert label_vocab is not None, ('Under the `pair` mode, you should provide `label_vocab`.')

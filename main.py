@@ -49,8 +49,8 @@ parser.add_argument('--decay_step', type=int, default=10, help='Steps to decay.'
 parser.add_argument('--decay_rate', type=float, default=0.5, help='The rate of learning rate decay at end of each epoch.')
 parser.add_argument('--use_cuda', action='store_true', default=True, help='Whether to use GPU.')
 parser.add_argument('--shuffle', action='store_true', default=True, help='Whether to shuffle for each epoch.')
-parser.add_argument('--predict_length', action='store_true', default=False, help='Whether to predict the length of a word.')
-parser.add_argument('--predict_oov', action='store_true', default=False, help='Whether to predict oov when encounters one.')
+parser.add_argument('--predict_word', action='store_true', default=False, help='Whether to predict the length of a word.')
+parser.add_argument('--oov_window', type=int, default=0, help='OOV window size. If 0, we don"t use it')
 parser.add_argument('--use_attention', action='store_true', default=False, help='Whether to use attention to predict word spans.')
 
 # the next arguments can be frozen.
@@ -76,9 +76,9 @@ epochs = args.epochs
 decay_step = args.decay_step
 decay_rate = args.decay_rate
 shuffle = args.shuffle
-predict_length = args.predict_length 
-predict_oov = args.predict_oov
-use_attention = args.attention
+predict_word = args.predict_word 
+oov_window = args.oov_window
+use_attention = args.use_attention
 use_cuda = args.use_cuda
 interval_report = args.interval_report
 interval_write = args.interval_write
@@ -99,7 +99,10 @@ model = CWSLstm(layers=layers,
                 hidden_dim=hidden_dim,
                 embed_dim=embed_dim,
                 vocab_size=vocab_size,
-                dropout=dropout)
+                dropout=dropout,
+                oov_window=oov_window,
+                predict_word=predict_word,
+                use_attention=use_attention)
 
 print('='*15, 'Model Information', '='*15)
 print(model)
@@ -109,7 +112,7 @@ print('='*50)
 if use_cuda:
     model = model.cuda()
 
-optimizer = optim.Adam(model.parameters(), lr=lr,)
+optimizer = optim.Adam(model.parameters(), lr=lr)
 scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=decay_rate, step_size=decay_step)
 
 if train_path != '':
