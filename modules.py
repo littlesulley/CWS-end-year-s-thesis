@@ -404,9 +404,9 @@ class CWSLstm(nn.Module):
                 packed = pack_padded_sequence(prev_layer, lengths, batch_first=True)
                 hiddens, _ = self.lstm_layer[i](packed)
                 padded, _ = pad_packed_sequence(hiddens, batch_first=True) # shape of (batch_size, seq_len, 2*hidden_dim)
-                prev_layer = self.attentions[i](padded, mask)              # shape of (batch_size, seq_len, 2*embed_dim)
+                prev_layer = self.attentions[i](padded, mask)              # shape of (batch_size, seq_len, 2*hidden_dim)
                 if i != self.layers - 1:
-                    prev_layer = self.dropout_layer(prev_layer)            # shape of (batch_size, seq_len, 2*embed_dim)
+                    prev_layer = self.dropout_layer(prev_layer)            # shape of (batch_size, seq_len, 2*hidden_dim)
             
             outputs = self.output_layer(prev_layer)                        # shape of (batch_size, seq_len, output_size)
 
