@@ -101,7 +101,7 @@ class Attention(nn.Module):
         """
         query_len = queries.size(1)
         if key_mask is None:
-            key_mask = torch.ones(queries.size()[:2], dtype=torch.uint8)
+            key_mask = torch.ones(keys.size()[:2], dtype=torch.uint8)
         mask = key_mask.unsqueeze(1).expand(-1, query_len, -1)  # shape of (batch_size, query_len, key_len)
 
         if self.attention_type == 'dot' or self.attention_type == 'self':
@@ -131,6 +131,83 @@ class Attention(nn.Module):
 
     def concat_score(self, queries, keys, values, mask):
         NotImplementedError
+
+class MultiHeadBlock(nn.Module):
+    def __init__(self,
+                 hidden_dim=512,
+                 heads=8):
+        super(MultiHeadBlock, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.heads = heads
+        self.dim_per_head = hidden_dim // heads
+
+        self.transition = nn.Linear(hidden_dim, 3 * hidden_dim)
+        self.attention = Attention(self.dim_per_head)
+        self.layernorm_layer = nn.LayerNorm(hidden_dim)
+
+    def forward(self,   
+                inputs, 
+                mask):
+        '''
+        args:
+            inputs: a 3D tensor, shape of (batch_size, seq_len, hidden_dim)
+            mask: a 2D tensor, shape of (batch_size, seq_len)
+        returns:
+            outputs: a 3D tensor, shape of (batch_size, seq_len, hidden_dim)
+        '''
+        assert inputs.size()[:2] == mask.size(), ("Whoops, the dimensions don't match.")
+
+        batch_size = inputs.size(0)
+
+        transitted = self.transition(inputs) # shape of (batch_size, seq_len, 3 * hidden_dim)
+        Q = transitted[:, :, : self.hidden_dim]
+        K = transitted[:, :, self.hidden_dim: 2 * self.hidden_dim]
+        V = transitted[:, :, 2 * self.hidden_dim:]
+
+        Q = Q.contiguous().view(batch_size * self.heads, -1, self.dim_per_head) # shape of (batch_size*heads, seq_len, hidden_dim/heads)
+        K = K.contiguous().view(batch_size * self.heads, -1, self.dim_per_head) # shape of (batch_size*heads, seq_len, hidden_dim/heads)
+        V = V.contiguous().view(batch_size * self.heads, -1, self.dim_per_head) # shape of (batch_size*heads, seq_len, hidden_dim/heads)
+
+        # NOTE: at the next step, Q/K/V is shape of (batch_size * heads, seq_len, hidden_dim / heads),
+        #       while mask is shape of (batch_size, seq_len)
+        #       so we need to expand the shape to (batch_size * heads, seq_len)
+        mask = mask.repeat(self.heads, 1)                          # shape of (batch_size * heads, seq_len)
+        attended = self.attention(Q, K, V, mask)                   # shape of (batch_size*heads, seq_len, hidden_dim/heads)
+        attended = attended.view(batch_size, -1, self.hidden_dim)  # shape of (batch_size, seq_len, hidden_dim)
+
+        outputs = self.layernorm_layer(inputs + attended)          # shape of (batch_size, seq_len, hidden_dim)
+        return outputs
+
+class MultiHeadFFBlock(nn.Module):
+    def __init__(self,
+                 hidden_dim=512,
+                 heads=8,
+                 dropout=0.2,
+                 ff_dim=[1024, 512]):
+        super(MultiHeadFFBlock, self).__init__()
+        
+        self.dropout_layer = nn.Dropout(dropout)
+        self.multihead_layer = MultiHeadBlock(hidden_dim=hidden_dim, heads=heads)
+        self.layernorm_layer = nn.LayerNorm(hidden_dim)
+        self.ff_layer_1 = nn.Linear(hidden_dim, ff_dim[0])
+        self.ff_layer_2 = nn.Linear(ff_dim[0], ff_dim[1])
+
+    def forward(self,
+                inputs, 
+                mask):
+        '''
+        args:
+            inputs: a 3D tensor, shape of (batch_size, seq_len, hidden_dim)
+            mask: a 2D tensor, shape of (batch_size, seq_len)
+        returns:
+            outputs: a 3D tensor, shape of (batch_size, seq_len, hidden_dim)
+        '''
+        multiheaded = self.multihead_layer(inputs, mask) # shape of (batch_size, seq_len, hidden_dim)
+        multiheaded = self.dropout_layer(multiheaded)    # shape of (batch_size, seq_len, hidden_dim)
+        outputs = self.ff_layer_2(self.dropout_layer(F.relu(self.ff_layer_1(multiheaded))))
+                                                         # shape of (batch_size, seq_len, hidden_dim)
+        outputs = self.layernorm_layer(multiheaded + outputs)   # shape of (batch_size, seq_len, hidden_dim)
+        return outputs
 
 class LanguageModel(nn.Module):
     """This module implements a basic language model."""
@@ -250,7 +327,7 @@ class BiLstmClassifier(nn.Module):
 class CWSLstm(nn.Module):
     def __init__(self,
                 layers=2,
-                hiddem_dim=256,
+                hidden_dim=256,
                 output_size=4,
                 embed_dim=300,
                 vocab_size=None,
@@ -275,7 +352,7 @@ class CWSLstm(nn.Module):
             self.embedding = nn.Embedding(vocab_size, embed_dim)
         
         self.layers = layers 
-        self.hiddem_dim = hiddem_dim
+        self.hidden_dim = hidden_dim
         self.output_size = output_size
         self.use_CRF = use_CRF
         self.oov_window = oov_window
@@ -283,20 +360,20 @@ class CWSLstm(nn.Module):
         self.use_attention = use_attention
 
         self.dropout_layer = nn.Dropout(dropout)
-        self.output_layer = nn.Linear(2 * hiddem_dim, output_size)
+        self.output_layer = nn.Linear(2 * hidden_dim, output_size)
 
         if predict_word:
-            self.predict_layer_1 = nn.Linear(2 * hiddem_dim, 100)
+            self.predict_layer_1 = nn.Linear(2 * hidden_dim, 100)
             self.predict_layer_2 = nn.Linear(100, 1)
         
         if use_attention is False:
-            self.lstm_layer = nn.LSTM(self.embed_dim, hiddem_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
+            self.lstm_layer = nn.LSTM(self.embed_dim, hidden_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
         else:
-            self.lstm_layer = nn.ModuleList(nn.LSTM(self.embed_dim, hiddem_dim, batch_first=True, bidirectional=True) for _ in range(layers))
-            self.attention = Attention(self.embed_dim)
-            self.transitions = nn.ModuleList(nn.Linear(2 * hiddem_dim, 3 * self.embed_dim) for _ in range(layers - 1))
+            self.lstm_layer = nn.ModuleList(nn.LSTM(self.embed_dim if _ == 0 else 2 * hidden_dim, hidden_dim, batch_first=True, bidirectional=True) for _ in range(layers))
+            self.attentions = nn.ModuleList(MultiHeadFFBlock(hidden_dim=2*hidden_dim, heads=2, dropout=dropout, ff_dim=[4*hidden_dim, 2*hidden_dim]) for _ in range(layers))
 
         self.init_orthogonal(self.lstm_layer)
+
         if use_CRF:
             #TODO: implement CRF layer module.
             pass 
@@ -304,7 +381,7 @@ class CWSLstm(nn.Module):
     def forward(self,
                 inputs,
                 lengths, 
-                mask=None):
+                mask):
         """
         args:
             inputs: a 2D tensor, shape of (batch_size, seq_len)
@@ -323,20 +400,15 @@ class CWSLstm(nn.Module):
             padded, _ = pad_packed_sequence(hiddens, batch_first=True) # shape of (batch_size, seq_len, 2*hidden_dim)
             outputs = self.output_layer(padded)                        # shape of (batch_size, seq_len, output_size)
         else:
-            for i in range(self.layers - 1):
+            for i in range(self.layers):
                 packed = pack_padded_sequence(prev_layer, lengths, batch_first=True)
                 hiddens, _ = self.lstm_layer[i](packed)
                 padded, _ = pad_packed_sequence(hiddens, batch_first=True) # shape of (batch_size, seq_len, 2*hidden_dim)
-                transitted = self.transitions[i](padded)                   # shape of (batch_size, seq_len, 3*embed_dim)
-                Q = transitted[:, :, : self.embed_dim]                     # shape of (batch_size, seq_len, embed_dim)
-                K = transitted[:, :, self.embed_dim: 2 * self.embed_dim]   # shape of (batch_size, seq_len, embed_dim)
-                V = transitted[:, :, 2 * self.embed_dim:]                  # shape of (batch_size, seq_len, embed_dim)
-                attended = self.attention(Q, K, V, mask)             # shape of (batch_size, seq_len, embed_dim)
-                prev_layer = self.dropout_layer(attended)                  # shape of (batch_size, seq_len, embed_dim)
-            packed = pack_padded_sequence(prev_layer, lengths, batch_first=True)
-            hiddens, _ = self.lstm_layer[-1](packed)
-            padded, _ = pad_packed_sequence(hiddens, batch_first=True)     # shape of (batch_size, seq_len, 2*hidden_dim)
-            outputs = self.output_layer(padded)                            # shape of (batch_size, seq_len, output_size)
+                prev_layer = self.attentions[i](padded, mask)              # shape of (batch_size, seq_len, 2*embed_dim)
+                if i != self.layers - 1:
+                    prev_layer = self.dropout_layer(prev_layer)            # shape of (batch_size, seq_len, 2*embed_dim)
+            
+            outputs = self.output_layer(prev_layer)                        # shape of (batch_size, seq_len, output_size)
 
         if self.predict_word:
             outputs_word = self.predict_layer_2(F.relu(self.dropout_layer(self.predict_layer_1(padded)))).squeeze(2) # shape of (batch_size, seq_len)
