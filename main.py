@@ -8,8 +8,10 @@ import numpy as np
 import os
 import sys 
 
-from utils import construct_vocab, construct_label_vocab, CWSDataset, convert_to_index, convert_to_tensor
-from utils import CrossEntropyWithMask, MSEWithMask, LoadData, calculate_params, convert_to_word_lengths
+from utils import construct_vocab, construct_label_vocab, convert_to_index, convert_to_tensor
+from utils import CrossEntropyWithMask, MSEWithMask, calculate_params, convert_to_word_lengths
+from utils import CWSDataset, CTBDataset, LoadData
+
 from metrics import calculate_f1, calculate_accuracy
 from modules import CWSLstm
 
@@ -117,15 +119,23 @@ if use_cuda:
 optimizer = optim.Adam(model.parameters(), lr=lr)
 scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=decay_rate, step_size=decay_step)
 
-if train_path != '':
-    train_dataset = CWSDataset(train_path, type=data_type)
-if dev_path != '':
-    dev_dataset = CWSDataset(dev_path, type=data_type)
-if eval_path != '':
-    if args.inplace_test is False:
-        test_dataset =CWSDataset(eval_path, type=data_type, mode='single', sort=False)
-    else:
-        test_dataset =CWSDataset(eval_path, type=data_type)
+if data_type in ['PKU', 'MS', 'Cityu', 'AS']:
+    if train_path != '':
+        train_dataset = CWSDataset(train_path, type=data_type)
+    if dev_path != '':
+        dev_dataset = CWSDataset(dev_path, type=data_type)
+    if eval_path != '':
+        if args.inplace_test is False:
+            test_dataset =CWSDataset(eval_path, type=data_type, mode='single', sort=False)
+        else:
+            test_dataset =CWSDataset(eval_path, type=data_type)
+else: # for `CTB` and `UD``
+    if train_path != '':
+        train_dataset = CWSDataset(train_path)
+    if dev_path != '':
+        dev_dataset = CWSDataset(dev_path)
+    if eval_path != '':
+        test_dataset = CWSDataset(eval_path)
 
 # <========== if `model_path` is not provided, training procedure will be executed =========>
 if model_path == '':

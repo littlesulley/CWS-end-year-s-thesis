@@ -114,7 +114,6 @@ class Vocab:
 class CWSDataset(Dataset):
     def __init__(self, file, type='PKU', mode='pair', sort=True):
         super(CWSDataset, self).__init__()
-        assert type in ['PKU', 'AS', 'City', 'MS'], ("Make sure the dataset type is one of ['PKU', 'AS', 'City', 'MS'].")
         self.type = type
 
         with open(file, 'r', encoding='utf-8') as f:
@@ -238,6 +237,81 @@ class CWSDataset(Dataset):
             labels.append(label)
         
         return labels  
+
+class CTBDataset(Dataset):
+    def __init__(self, files, type='segmented', preprocessed=True, sort=True):
+        '''This function reads data from `files`.
+            files: a list of file path, because for `CTB dataset`, each file only contains a short piece of news.
+            type: the type of data.
+            preprocessed: if True, we only need to read one file.
+            sort: if `True`, data will be sorted after reading finished.
+        '''
+        assert type in ['segmented', 'bracketed', 'postagged'], ("Whoops, there's something wrong with `type`, please check again.")
+
+        if type == 'segmented':
+            data_lines = []
+
+            if not preprocessed:
+                for file in files:
+                    with open(file, 'r', encoding='utf-8') as f:
+                        file_lines = f.readlines()
+                        file_lines = [line.strip() for line in file_lines]
+                        file_lines = [line for line in file_lines if not line.startswith('<')]
+                    data_lines.extend(file_lines)
+            else:
+                with open(files, 'r', encoding='utf-8') as f:
+                    data_lines = f.readlines()
+                    data_lines = [line.strip() for line in file_lines]
+                    data_lines = [line for line in file_lines if len(len) > 0]
+
+            if sort == True:
+                data_lines = sorted(data_lines, key=len, reverse=True)
+
+            X_lines = [self.get_sentence_chars(line) for line in data_lines if len(line) > 0]
+            Y_lines = [self.get_sentence_tags(line) for line in data_lines if len(line) > 0]
+            self.lines = list(zip(X_lines, Y_lines))
+            for sample in self.lines:
+                assert len(sample[0]) == len(sample[1]), ('Whoops, something goes wrong.')
+
+        elif type == 'bracketed':
+            print('TODO...')
+            # TODO
+            # pass
+        else:
+            print('TODO...')
+            # TODO
+            # pass
+
+    def __len__(self):
+        return len(self.lines)
+    
+    def __getitem__(self, idx):
+        return self.lines[idx]
+    
+    def get_sentence_chars(self, sentence):
+        chars = sentence.replace(' ', '')
+        return chars
+
+    def get_sentence_tags(self, sentence):
+        sentence_len = len(sentence)
+        tags = ""
+        prev_space = 1  # whether the previous character is a space
+        for i in range(sentence_len):
+            if sentence[i] == ' ':
+                prev_space = 1
+            else:
+                if prev_space == 1:
+                    if i == sentence_len - 1 or sentence[i + 1] == ' ':
+                        tags += 'S'
+                    else:
+                        tags += 'B'
+                else:
+                    if i == sentence_len - 1 or sentence[i + 1] == ' ':
+                        tags += 'E'
+                    else:
+                        tags += 'I'
+                prev_space = 0
+        return tags
 
 # <========== This function is used to calculate OOV rate ==========>
 def calculate_oov(test_corpus_file, token_type='word', train_vocab=None, train_vocab_file=None):
@@ -413,6 +487,24 @@ def BPE(vocab, n_merges=10):
         best = max(pairs, key=pairs.get)
         vocab = merge_vocab(best, vocab)
     return vocab
+
+# <========== The next function is used to convert a batch of input into a batch tensor ==========>
+def convert_conll_to_cws(file, save_file_path):
+    '''This file is used to convert the CoNLL data format to CWS data format.
+    '''
+    lines = []
+    with open(file, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line[0] == '#':
+                sentence = []
+            elif line[0].isdigit():
+                sentence.append(line.strip().split('\t')[1])
+            elif line[0] == '\n':
+                sentence = ' '.join(sentence)
+                lines.append(sentence + '\n')
+
+    with open(save_file_path, 'w', encoding='utf-8') as f:
+        f.writelines(lines)
 
 # <========== The next function is used to convert a batch of input into a batch tensor ==========>
 def convert_to_tensor(batch, PAD=0, mode='pair', sort=True):
