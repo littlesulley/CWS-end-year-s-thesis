@@ -15,6 +15,13 @@ def merge_files(BASE_DIR, files, save_file_path):
             with open(save_file_path, 'a', encoding='utf-8') as fout:
                 fout.writelines(fin.readlines())
 
+def convert_seg_to_unseg(file_path, save_path):
+    with open(file_path, 'r', encoding='utf-8') as fin:
+        with open(save_path, 'w', encoding='utf-8') as fout:
+            seg_lines = fin.readlines()
+            unseg_lines = [''.join(line.split(' ')) for line in seg_lines]
+            fout.writelines(unseg_lines)
+
 # ============================================================================
 # split Bakeoff 2005 dataset
 #file_path = '/home/sulley/桌面/CWS/datasets/training/msr' #['msr', 'as', 'cityu', 'pku']
@@ -32,11 +39,11 @@ def merge_files(BASE_DIR, files, save_file_path):
 #        file_path = os.path.join(base_dir, file_name+fix)
 #        statisctics(file_path)
 
-file_names = ['as_test_gold', 'pku_test_gold', 'msr_test_gold', 'cityu_test_gold']
-base_dir = './datasets/gold'
-for file_name in file_names:
-    file_path = os.path.join(base_dir, file_name)
-    statisctics(file_path)
+#file_names = ['as_test_gold', 'pku_test_gold', 'msr_test_gold', 'cityu_test_gold']
+#base_dir = './datasets/gold'
+#for file_name in file_names:
+#    file_path = os.path.join(base_dir, file_name)
+#    statisctics(file_path)
 
 
 # ============================================================================
@@ -81,6 +88,7 @@ for file_name in file_names:
 #    file_path = os.path.join(base_dir, file_name)
 #    statisctics(file_path)
 
+
 # ============================================================================
 # create UD data
 #train_file = '/home/sulley/桌面/datasets/UD2017/train/UD_Chinese/zh-ud-train.conllu'
@@ -97,3 +105,8 @@ for file_name in file_names:
 #for file in file_names:
 #    file_path = os.path.join(base_dir, file)
 #    statisctics(file_path)
+
+
+# convert to unsegmented sentences
+convert_seg_to_unseg('./datasets/gold/ctb_test_gold', './datasets/testing/ctb_test')
+convert_seg_to_unseg('./datasets/gold/ud_test_gold', './datasets/testing/ud_test')
