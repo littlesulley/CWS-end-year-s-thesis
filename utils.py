@@ -643,6 +643,9 @@ def MSEWithMask(inputs, targets, mask):
 
 # <========== The next function is used to load data once per batch ==========>
 def LoadData(dataset, batch_size, shuffle=False):
+    '''This function is used to load batches from a dataset.
+        NOTE: every batch is a tuple, of which every element is a feature.
+    '''
     size = len(dataset)
     start = 0
     end = batch_size

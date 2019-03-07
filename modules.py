@@ -68,11 +68,13 @@ class Attention(nn.Module):
                  hidden_dim, 
                  attention_type='dot', 
                  is_scaled=False,
+                 dropout=None,
                  **kwargs):
         super(Attention, self).__init__()
         self.hidden_dim = hidden_dim
         self.attention_type = attention_type
         self.is_scaled = is_scaled
+        self.dropout = dropout
 
         if attention_type not in ['dot', 'general', 'concat', 'self']:
             raise ValueError('Attention type %s is not appropriate.' % attention_type)
@@ -117,6 +119,8 @@ class Attention(nn.Module):
         if self.is_scaled:
             attended = attended / np.sqrt(self.hidden_dim)
         attended = F.softmax(attended, dim=-1)                # shape of (batch_size, query_len, key_len)
+        if self.dropout:
+            attended = F.dropout(attended, self.dropout)
         scores = torch.bmm(attended, values)                  # shape of (batch_size, query_len, hidden_dim)
         return scores
 
@@ -126,6 +130,8 @@ class Attention(nn.Module):
         if self.is_scaled:
             attended = attended / np.sqrt(self.hidden_dim)
         attended = F.softmax(attended, dim=-1)                # shape of (batch_size, query_len, key_len)
+        if self.dropout:
+            attended = F.dropout(attended, self.dropout)
         scores = torch.bmm(attended, values)                  # shape of (batch_size, query_len, hidden_dim)
         return scores
 
@@ -135,14 +141,18 @@ class Attention(nn.Module):
 class MultiHeadBlock(nn.Module):
     def __init__(self,
                  hidden_dim=512,
-                 heads=8):
+                 heads=8,
+                 dropout=None):
         super(MultiHeadBlock, self).__init__()
+        assert hidden_dim % heads == 0, ("Whoops, `hidden_dim` should be exactly divided by `heads` T_T")
+
         self.hidden_dim = hidden_dim
         self.heads = heads
         self.dim_per_head = hidden_dim // heads
 
         self.transition = nn.Linear(hidden_dim, 3 * hidden_dim)
-        self.attention = Attention(self.dim_per_head)
+        self.attention = Attention(self.dim_per_head, dropout=dropout)
+        self.linear = nn.Linear(hidden_dim, hidden_dim)
         self.layernorm_layer = nn.LayerNorm(hidden_dim)
 
     def forward(self,   
@@ -155,27 +165,47 @@ class MultiHeadBlock(nn.Module):
         returns:
             outputs: a 3D tensor, shape of (batch_size, seq_len, hidden_dim)
         '''
-        assert inputs.size()[:2] == mask.size(), ("Whoops, the dimensions don't match.")
+        assert inputs.size()[:2] == mask.size(), ("Whoops, dimensions between `inputs` and `mask` don't match.")
 
         batch_size = inputs.size(0)
 
-        transitted = self.transition(inputs) # shape of (batch_size, seq_len, 3 * hidden_dim)
-        Q = transitted[:, :, : self.hidden_dim]
-        K = transitted[:, :, self.hidden_dim: 2 * self.hidden_dim]
-        V = transitted[:, :, 2 * self.hidden_dim:]
+        transitted = self.transition(inputs)                                   # shape of (batch_size, seq_len, 3 * hidden_dim)
+        Q = transitted[:, :, : self.hidden_dim]                                # shape of (batch_size, seq_len, hidden_dim)
+        K = transitted[:, :, self.hidden_dim: 2 * self.hidden_dim]             # shape of (batch_size, seq_len, hidden_dim)
+        V = transitted[:, :, 2 * self.hidden_dim:]                             # shape of (batch_size, seq_len, hidden_dim)
 
+        # NOTE: at the next step, you should be careful that, you CAN'T don `Q.view(batch_size * self.heads, -1, self.dim_per_heads)`
+        #       This is very subtle, so you need to be advertent.
+
+        # First, resize to (batch_size, seq_len, heads, hidden_dim/heads)
+        Q = Q.contiguous().view(batch_size, -1, self.heads, self.dim_per_head) # shape of (batch_size, seq_len, heads, hidden_dim/heads)
+        K = K.contiguous().view(batch_size, -1, self.heads, self.dim_per_head) # shape of (batch_size, seq_len, heads, hidden_dim/heads)
+        V = V.contiguous().view(batch_size, -1, self.heads, self.dim_per_head) # shape of (batch_size, seq_len, heads, hidden_dim/heads)
+
+        # Second, transpose to (batch_size, heads, seq_len, hidden_dim/heads)
+        Q = Q.transpose(1, 2)                                                  # shape of (batch_size, heads, seq_len, hidden_dim/heads)
+        K = K.transpose(1, 2)                                                  # shape of (batch_size, heads, seq_len, hidden_dim/heads)
+        V = V.transpose(1, 2)                                                  # shape of (batch_size, heads, seq_len, hidden_dim/heads)
+
+        # Third, merge to (batch_size*heads, seq_len, hidden_dim/heads)
         Q = Q.contiguous().view(batch_size * self.heads, -1, self.dim_per_head) # shape of (batch_size*heads, seq_len, hidden_dim/heads)
         K = K.contiguous().view(batch_size * self.heads, -1, self.dim_per_head) # shape of (batch_size*heads, seq_len, hidden_dim/heads)
         V = V.contiguous().view(batch_size * self.heads, -1, self.dim_per_head) # shape of (batch_size*heads, seq_len, hidden_dim/heads)
 
+        # Last, go through attenton layer
+  
         # NOTE: at the next step, Q/K/V is shape of (batch_size * heads, seq_len, hidden_dim / heads),
         #       while mask is shape of (batch_size, seq_len)
         #       so we need to expand the shape to (batch_size * heads, seq_len)
-        mask = mask.repeat(self.heads, 1)                          # shape of (batch_size * heads, seq_len)
-        attended = self.attention(Q, K, V, mask)                   # shape of (batch_size*heads, seq_len, hidden_dim/heads)
-        attended = attended.view(batch_size, -1, self.hidden_dim)  # shape of (batch_size, seq_len, hidden_dim)
+        mask = mask.repeat(self.heads, 1)                                      # shape of (batch_size * heads, seq_len)
+        attended = self.attention(Q, K, V, mask)                               # shape of (batch_size*heads, seq_len, hidden_dim/heads)
 
-        outputs = self.layernorm_layer(inputs + attended)          # shape of (batch_size, seq_len, hidden_dim)
+        # Now, we reverse the procedure that we did above
+        attended = attended.contiguous().view(batch_size, self.heads, -1, self.dim_per_head).transpose(1, 2).contiguous().view(batch_size, -1, self.hidden_dim)
+                                                                               # shape of (batch_size, seq_len, hidden_dim)
+
+        outputs = self.linear(F.dropout(attended, 0.2))
+        outputs = self.layernorm_layer(outputs + attended)                     # shape of (batch_size, seq_len, hidden_dim)
         return outputs
 
 class MultiHeadFFBlock(nn.Module):
@@ -187,7 +217,7 @@ class MultiHeadFFBlock(nn.Module):
         super(MultiHeadFFBlock, self).__init__()
         
         self.dropout_layer = nn.Dropout(dropout)
-        self.multihead_layer = MultiHeadBlock(hidden_dim=hidden_dim, heads=heads)
+        self.multihead_layer = MultiHeadBlock(hidden_dim=hidden_dim, heads=heads, dropout=dropout)
         self.layernorm_layer = nn.LayerNorm(hidden_dim)
         self.ff_layer_1 = nn.Linear(hidden_dim, ff_dim[0])
         self.ff_layer_2 = nn.Linear(ff_dim[0], ff_dim[1])
