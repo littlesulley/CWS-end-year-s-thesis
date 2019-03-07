@@ -95,7 +95,7 @@ SAVE_DIR = os.path.join(CHECKPOINT_DIR, data_type)
 print("="*15, "Constructing vocabulary", '='*15)
 labels = ['B', 'I', 'E', 'S']
 label_vocab = construct_label_vocab(labels)
-vocab = construct_vocab(corpus_file=train_path, min_count=2)
+vocab = construct_vocab(corpus_file=train_path, min_count=1)
 vocab_size = len(vocab)
 print("="*15, "Finish constructing vocabulary", '='*15)
 

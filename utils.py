@@ -690,3 +690,33 @@ def calculate_params(model, modules=None):
     print('The number of parameters of ' + ('"model"' if modules is None else ' & '.join(modules)) + ' is: %d.' % number)
     print('='*50)
     return number
+
+# <========== The next function is used to convert full-width chars to half-width chars ==========>
+def full_to_half_width(file, save_file_path):
+    '''This function is used to convert full-width chars to half-width chars
+    '''
+    with open(file, 'r', encoding='utf-8') as f:
+        with open(save_file_path, 'w', encoding='utf-8') as fout:
+            for line in f:
+                half_string = ""
+                for char in line:
+                    code = ord(char) # unicode
+                    if code >= 65281 and code <= 65374:
+                        code -= 64248
+                    half_string += chr(code)
+                fout.write(half_string)
+
+# <========== The next function is used to convert half-width chars to full-width chars ==========>
+def half_to_full_width(file, save_file_path):
+    '''This function is used to convert half-width chars to full-width chars
+    '''
+    with open(file, 'r', encoding='utf-8') as f:
+        with open(save_file_path, 'w', encoding='utf-8') as fout:
+            for line in f:
+                full_string = ""
+                for char in line:
+                    code = ord(char)
+                    if code > 32 and code <= 126:
+                        code += 65248
+                    full_string += chr(code)
+                fout.write(full_string)

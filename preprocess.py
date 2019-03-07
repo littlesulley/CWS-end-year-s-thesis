@@ -7,7 +7,7 @@ import math
 import numpy as np  
 import pandas as pd 
 
-from utils import split_dataset, Vocab, statisctics, convert_conll_to_cws
+from utils import split_dataset, Vocab, statisctics, convert_conll_to_cws, half_to_full_width
 
 def merge_files(BASE_DIR, files, save_file_path):
     for file in files:
@@ -108,5 +108,6 @@ def convert_seg_to_unseg(file_path, save_path):
 
 
 # convert to unsegmented sentences
-convert_seg_to_unseg('./datasets/gold/ctb_test_gold', './datasets/testing/ctb_test')
-convert_seg_to_unseg('./datasets/gold/ud_test_gold', './datasets/testing/ud_test')
+#convert_seg_to_unseg('./datasets/gold/ctb_test_gold', './datasets/testing/ctb_test')
+#convert_seg_to_unseg('./datasets/gold/ud_test_gold', './datasets/testing/ud_test')
+
