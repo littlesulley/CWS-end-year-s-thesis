@@ -2,6 +2,12 @@
 
 read -p "Please enter the following values: 'CUDA_VISIBLE_DEVICES', 'data_type' and 'batch_size' >> " CUDA data_type batch_size
 
+if [ $data_type != "PKU" -a $data_type != "MS" -a $data_type != "City" -a $data_type != "AS" -a $data_type != "UD" -a $data_type != "CTB" ]
+then
+    echo "${data_type} wrong, please check again! "
+    exit 1
+fi
+
 if [ $data_type == "PKU" ]
 then
     FILE="pku"
@@ -11,24 +17,36 @@ then
 elif [ $data_type == "City" ]
 then 
     FILE="cityu"
-else
+elif [ $data_type == "AS" ]
+then
     FILE="as"
+elif [ $data_type == "UD" ]
+then
+    FILE="ud"
+else
+    FILE="ctb"
 fi
+
+
+train_path="/data/nfsdata/hanqinghong/cws/training/${FILE}_train"
+dev_path="/data/nfsdata/hanqinghong/cws/training/${FILE}_dev"
+eval_path="/data/nfsdata/hanqinghong/cws/testing/${FILE}_test"
+
 
 for dropout in 0.1 0.15 0.2 0.25
 do
-    for lr in 0.001 0.0015 0.002
+    for lr in 0.004 0.005 0.006
     do
-        for layers in 1 2
+        for layers in 2 3
         do 
-            for hidden_dim in 150 200
+            for hidden_dim in 200 250 300 400
             do 
-                for decay_rate in 0.9 0.95
+                for decay_rate in 0.8 0.85 0.9
                 do
                     CUDA_VISIBLE_DEVICES=${CUDA} python main.py \
-                    --train_path /data/nfsdata/hanqinghong/cws/training/${FILE}_train \
-                    --dev_path /data/nfsdata/hanqinghong/cws/training/${FILE}_dev \
-                    --eval_path /data/nfsdata/hanqinghong/cws/testing/${FILE}_test \
+                    --train_path ${train_path} \
+                    --dev_path ${dev_path} \
+                    --eval_path ${eval_path} \
                     --shuffle \
                     --layers ${layers} \
                     --embed_dim 100 \
@@ -45,9 +63,9 @@ do
                     wait 
 
                     CUDA_VISIBLE_DEVICES=${CUDA} python main.py \
-                    --train_path /data/nfsdata/hanqinghong/cws/training/${FILE}_train \
-                    --dev_path /data/nfsdata/hanqinghong/cws/training/${FILE}_dev \
-                    --eval_path /data/nfsdata/hanqinghong/cws/testing/${FILE}_test \
+                    --train_path ${train_path} \
+                    --dev_path ${dev_path} \
+                    --eval_path ${eval_path} \
                     --shuffle \
                     --layers ${layers} \
                     --embed_dim 100 \

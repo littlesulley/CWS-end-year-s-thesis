@@ -119,7 +119,10 @@ if use_cuda:
 optimizer = optim.Adam(model.parameters(), lr=lr)
 scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=decay_rate, step_size=decay_step)
 
-if data_type in ['PKU', 'MS', 'Cityu', 'AS']:
+if data_type not in ['PKU', 'MS', 'City', 'AS', 'UD', 'CTB']:
+    assert ValueError('`data_type` wrong, please check again.')
+
+if data_type in ['PKU', 'MS', 'City', 'AS']:
     if train_path != '':
         train_dataset = CWSDataset(train_path, type=data_type)
     if dev_path != '':
