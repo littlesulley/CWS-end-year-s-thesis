@@ -83,7 +83,12 @@ do
                     wait
                     
                     echo "==========Running script=========="
-                    perl scripts/score gold/${FILE}_training_words gold/${FILE}_test_gold checkpoint/${data_type}/${data_type}_pred > checkpoint/${data_type}/score_${data_type}
+                    if [ $data_type == "UD" -o $data_type == "CTB" ]; then 
+                        perl scripts/score gold/$pku_training_words gold/${FILE}_test_gold checkpoint/${data_type}/${data_type}_pred > checkpoint/${data_type}/score_${data_type}
+                    else
+                        perl scripts/score gold/${FILE}_training_words gold/${FILE}_test_gold checkpoint/${data_type}/${data_type}_pred > checkpoint/${data_type}/score_${data_type}
+                    fi
+                    
                     echo "dropout: ${dropout}, lr: ${lr}, layer: ${layers}, hidden dim:${hidden_dim}, decay: ${decay_rate}. " $(tail -n 1 checkpoint/${data_type}/score_${data_type}) | tee -a checkpoint/${data_type}/${data_type}_log
                     
                     sleep 1 &
