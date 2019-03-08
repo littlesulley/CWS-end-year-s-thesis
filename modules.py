@@ -365,6 +365,7 @@ class CWSLstm(nn.Module):
                 dropout=0.2,
                 use_CRF=False,
                 oov_window=0,
+                use_cnn=False,
                 predict_word=False,
                 use_attention=False,
                **kwargs):
@@ -385,12 +386,21 @@ class CWSLstm(nn.Module):
         self.hidden_dim = hidden_dim
         self.output_size = output_size
         self.use_CRF = use_CRF
+        self.use_cnn = use_cnn
         self.oov_window = oov_window
         self.predict_word = predict_word
         self.use_attention = use_attention
 
         self.dropout_layer = nn.Dropout(dropout)
         self.output_layer = nn.Linear(2 * hidden_dim, output_size)
+
+        if use_cnn:
+            self._2gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 2)
+            self._3gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 3)
+            self._4gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 4)
+            self._5gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 5)
+
+            self.embed_dim += 80
 
         if predict_word:
             self.predict_layer_1 = nn.Linear(2 * hidden_dim, 100)
@@ -422,6 +432,19 @@ class CWSLstm(nn.Module):
         if self.oov_window != 0:
             embeded = self.predict_unk(inputs, lengths, embeded, self.oov_window)  # shape of (batch_size, seq_len, embedding_dim)
         embeded = self.dropout_layer(embeded)
+
+        if self.use_cnn:   # transpose --> (batch_size, embedding_dim, seq_len) --> *
+            embeded_2gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=1, right_size=0) 
+            embeded_3gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=1, right_size=1)
+            embeded_4gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=2, right_size=1)
+            embeded_5gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=2, right_size=2)
+
+            embeded_2gram = self._2gram_cnn_layer(embeded_2gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+            embeded_3gram = self._3gram_cnn_layer(embeded_3gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+            embeded_4gram = self._4gram_cnn_layer(embeded_4gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+            embeded_5gram = self._5gram_cnn_layer(embeded_5gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+
+            embeded = torch.cat((embeded, embeded_2gram, embeded_3gram, embeded_4gram, embeded_5gram), dim=-1)
 
         packed = pack_padded_sequence(embeded, lengths, batch_first=True)
         hiddens, _ = self.lstm_layer(packed)
@@ -504,3 +527,12 @@ class CWSLstm(nn.Module):
             return torch.cat((tensor[:, bias:, :], append_tensor), dim=1)
         else:
             return torch.cat((append_tensor, tensor[:, :bias, :]), dim=1)
+
+    def cnn_tensor(self, tensor, left_size=1, right_size=1):
+        '''`tensor` is of shape (batch_size, hidden_dim, seq_len)'''
+        batch_size = tensor.size(0)
+        hidden_dim = tensor.size(1)
+        left_added_tensor = torch.zeros(batch_size, hidden_dim, left_size).cuda()   # shape of (batch_size, hidden_dim, left_size)
+        right_added_tensor = torch.zeros(batch_size, hidden_dim, right_size).cuda() # shape of (batch_size, hidden_dim, right_size)
+        
+        return torch.cat((left_added_tensor, tensor, right_added_tensor), dim=-1)   # shape of (batch_size, hidden_dim, left_size + seq_len + right_size)

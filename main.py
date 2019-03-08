@@ -51,6 +51,7 @@ parser.add_argument('--decay_step', type=int, default=10, help='Steps to decay.'
 parser.add_argument('--decay_rate', type=float, default=0.5, help='The rate of learning rate decay at end of each epoch.')
 parser.add_argument('--use_cuda', action='store_true', default=True, help='Whether to use GPU.')
 parser.add_argument('--shuffle', action='store_true', default=True, help='Whether to shuffle for each epoch.')
+parser.add_argument('--use_cnn', action='store_true', default=False, help='Whether to use cnn to extract ngram features.')
 parser.add_argument('--predict_word', action='store_true', default=False, help='Whether to predict the length of a word.')
 parser.add_argument('--loss_lambda', type=float, default=1e-5, help='The ratio of loss when using `predict_word`.')
 parser.add_argument('--oov_window', type=int, default=0, help='OOV window size. If 0, we don"t use it')
@@ -79,6 +80,7 @@ epochs = args.epochs
 decay_step = args.decay_step
 decay_rate = args.decay_rate
 shuffle = args.shuffle
+use_cnn = args.use_cnn
 predict_word = args.predict_word 
 loss_lambda = args.loss_lambda
 oov_window = args.oov_window
@@ -104,6 +106,7 @@ model = CWSLstm(layers=layers,
                 embed_dim=embed_dim,
                 vocab_size=vocab_size,
                 dropout=dropout,
+                use_cnn=use_cnn,
                 oov_window=oov_window,
                 predict_word=predict_word,
                 use_attention=use_attention)
