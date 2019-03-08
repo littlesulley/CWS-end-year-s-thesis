@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd 
 
 from utils import split_dataset, Vocab, statisctics, convert_conll_to_cws, half_to_full_width
+from utils import Vocab
 
 def merge_files(BASE_DIR, files, save_file_path):
     for file in files:
@@ -22,8 +23,8 @@ def convert_seg_to_unseg(file_path, save_path):
             unseg_lines = [''.join(line.split(' ')) for line in seg_lines]
             fout.writelines(unseg_lines)
 
-# ============================================================================
-# split Bakeoff 2005 dataset
+# ================== split Bakeoff 2005 dataset ==========================================================
+# 
 #file_path = '/home/sulley/桌面/CWS/datasets/training/msr' #['msr', 'as', 'cityu', 'pku']
 #save_dir = '/home/sulley/桌面/CWS/datasets/training'
 #save_file_name = 'msr' #['msr', 'as', 'cityu', 'pku']
@@ -46,8 +47,8 @@ def convert_seg_to_unseg(file_path, save_path):
 #    statisctics(file_path)
 
 
-# ============================================================================
-# merge CTB6.0 dataset and split into train/dev/test
+# ================ merge CTB6.0 dataset and split into train/dev/test ============================================================
+# 
 #test_data_files = ['chtb_000' + str(i) + '.seg' for i in range(1, 10)] + ['chtb_00' + str(i) + '.seg' for i in range(10, 41)] + \
 #                    ['chtb_0' + str(i) + '.seg' for i in range(901, 932)] + ['chtb_1018.seg', 'chtb_1020.seg', 'chtb_1036.seg'] + \
 #                    ['chtb_1044.seg', 'chtb_1060.seg', 'chtb_1061.seg', 'chtb_1072.seg', 'chtb_1118.seg', 'chtb_1119.seg', 'chtb_1132.seg'] + \
@@ -89,8 +90,8 @@ def convert_seg_to_unseg(file_path, save_path):
 #    statisctics(file_path)
 
 
-# ============================================================================
-# create UD data
+# ================ create UD data ============================================================
+# 
 #train_file = '/home/sulley/桌面/datasets/UD2017/train/UD_Chinese/zh-ud-train.conllu'
 #dev_file = '/home/sulley/桌面/datasets/UD2017/train/UD_Chinese/zh-ud-dev.conllu'
 #test_file = '/home/sulley/桌面/datasets/UD2017/test/gold/zh.conllu'
@@ -111,5 +112,18 @@ def convert_seg_to_unseg(file_path, save_path):
 #convert_seg_to_unseg('./datasets/gold/ctb_test_gold', './datasets/testing/ctb_test')
 #convert_seg_to_unseg('./datasets/gold/ud_test_gold', './datasets/testing/ud_test')
 
-#================================================================
-half_to_full_width('./datasets/testing/pku_test', './datasets/testing/pku_test_full')
+#================== convert data format (for PKU) ==============================================
+#
+#half_to_full_width('./datasets/testing/pku_test', './datasets/testing/pku_test_full')
+
+#================== build word vocab for UD and CTB training sets =============================
+#
+ud_vocab = Vocab(min_count=1, level='word')
+ud_vocab.add_file('./datasets/training/ud_train')
+ud_vocab.trim()
+ud_vocab.save_vocab('./datasets/gold/ud_training_words')
+
+ud_vocab = Vocab(min_count=1, level='word')
+ud_vocab.add_file('./datasets/training/ctb_train')
+ud_vocab.trim()
+ud_vocab.save_vocab('./datasets/gold/ctb_training_words')

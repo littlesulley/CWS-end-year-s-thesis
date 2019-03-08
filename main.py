@@ -138,7 +138,10 @@ else: # for `CTB` and `UD``
     if dev_path != '':
         dev_dataset = CWSDataset(dev_path)
     if eval_path != '':
-        test_dataset = CWSDataset(eval_path)
+        if args.inplace_test is False:
+            test_dataset =CWSDataset(eval_path, mode='single', sort=False)
+        else:
+            test_dataset =CWSDataset(eval_path)
 
 # <========== if `model_path` is not provided, training procedure will be executed =========>
 if model_path == '':
