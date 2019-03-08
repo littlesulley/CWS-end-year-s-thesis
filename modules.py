@@ -431,7 +431,6 @@ class CWSLstm(nn.Module):
         embeded = self.embedding(inputs)   # shape of (batch_size, seq_len, embedding_dim)
         if self.oov_window != 0:
             embeded = self.predict_unk(inputs, lengths, embeded, self.oov_window)  # shape of (batch_size, seq_len, embedding_dim)
-        embeded = self.dropout_layer(embeded)
 
         if self.use_cnn:   # transpose --> (batch_size, embedding_dim, seq_len) --> *
             embeded_2gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=1, right_size=0) 
@@ -445,6 +444,8 @@ class CWSLstm(nn.Module):
             embeded_5gram = self._5gram_cnn_layer(embeded_5gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
 
             embeded = torch.cat((embeded, embeded_2gram, embeded_3gram, embeded_4gram, embeded_5gram), dim=-1)
+
+        embeded = self.dropout_layer(embeded)
 
         packed = pack_padded_sequence(embeded, lengths, batch_first=True)
         hiddens, _ = self.lstm_layer(packed)
