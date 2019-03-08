@@ -720,3 +720,48 @@ def half_to_full_width(file, save_file_path):
                         code += 65248
                     full_string += chr(code)
                 fout.write(full_string)
+
+# <========== The next function is used to calculte the overlap and difference ratio of two vocabularies ==========>
+def vocab_overlap_and_difference_ratio(vocab_1, vocab_2):
+    '''This function is used to calculate the overlap and difference ratio of two vocabularies.
+    '''
+    vocab_1 = set(vocab_1)
+    vocab_2 = set(vocab_2)
+
+    vocab_1_len = len(vocab_1)
+    vocab_2_len = len(vocab_2)
+
+    vocab_intersection = vocab_1 & vocab_2
+    vocab_union = vocab_1 | vocab_2
+
+    vocab_intersection_len = len(vocab_intersection)
+    vocab_union_len = len(vocab_union)
+
+    vocab_2_minus_vocab_1 = vocab_2 - vocab_1
+    vocab_1_minus_vocab_2 = vocab_1 - vocab_2
+
+    vocab_2_minus_vocab_1_len = len(vocab_2_minus_vocab_1)
+    vocab_1_minus_vocab_2_len = len(vocab_1_minus_vocab_2)
+
+    overlap_ratio_on_vocab_1 = 1.0 * vocab_intersection_len / vocab_1_len
+    overlap_ratio_on_vocab_2 = 1.0 * vocab_intersection_len / vocab_2_len
+
+    difference_ratio_on_vocab_1 = 1.0 * vocab_2_minus_vocab_1_len / vocab_1_len
+    difference_ratio_on_vocab_2 = 1.0 * vocab_1_minus_vocab_2_len / vocab_2_len
+
+    print('='*80)
+    print('Vocabulary 1 has %8d unique tokens.' % vocab_1_len)
+    print('Vocabulary 2 has %8d unique tokens.' % vocab_2_len)
+    print('*'*80)
+    print('The intersection of the twno vocabularies has %8d unique tokens.' % vocab_intersection_len)
+    print('The union of the two vocabularies has %8d unique tokens.' % vocab_union_len)
+    print('*'*80)
+    print('Overlap ratio on vocabuarly 1 is %.6f.' % overlap_ratio_on_vocab_1)
+    print('Overlap ratio on vocabuarly 2 is %.6f.' % overlap_ratio_on_vocab_2)
+    print('*'*80)
+    print('There are %8d tokens which appear in vocabulary 2 but not in vocabulary 1.' % vocab_2_minus_vocab_1_len)
+    print('There are %8d tokens which appear in vocabulary 1 but not in vocabulary 2.' % vocab_1_minus_vocab_2_len)
+    print('*'*80)
+    print('Difference ratio on vocabulary 1 is %.6f.' % difference_ratio_on_vocab_1)
+    print('Difference ratio on vocabulary 2 is %.6f.' % difference_ratio_on_vocab_2)
+    print('='*80)
