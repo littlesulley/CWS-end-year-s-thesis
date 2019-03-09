@@ -409,8 +409,7 @@ class CWSLstm(nn.Module):
         self.lstm_layer = nn.LSTM(self.embed_dim, hidden_dim, layers, batch_first=True, bidirectional=True, dropout=dropout)
 
         if use_attention is True:
-            self.transition_1 = nn.Linear(10 * hidden_dim, 4 * hidden_dim)
-            self.transition_2 = nn.Linear(4 * hidden_dim, 2 * hidden_dim)
+            self.attention = Attention(2 * hidden_dim)
 
         self.init_orthogonal(self.lstm_layer)
         if use_CRF:
@@ -449,23 +448,11 @@ class CWSLstm(nn.Module):
 
         packed = pack_padded_sequence(embeded, lengths, batch_first=True)
         hiddens, _ = self.lstm_layer(packed)
-        padded, _ = pad_packed_sequence(hiddens, batch_first=True) # shape of (batch_size, seq_len, 2*hidden_dim)
+        padded, _ = pad_packed_sequence(hiddens, batch_first=True)         # shape of (batch_size, seq_len, 2*hidden_dim)
         prev_layer = padded
         
         if self.use_attention is True:
-            padded_left = self.shift_tensor(padded, -1)      # shape of (batch_size, seq_len, 2*hidden_dim)
-            padded_right = self.shift_tensor(padded, 1)      # shape of (batch_size, seq_len, 2*hidden_dim)
-
-            minus_left = torch.abs(padded - padded_left)     # shape of (batch_size, seq_len, 2*hidden_dim)
-            minus_right = torch.abs(padded_right - padded)   # shape of (batch_size, seq_len, 2*hidden_dim)
-            multi_left = torch.mul(padded, padded_left)      # shape of (batch_size, seq_len, 2*hidden_dim)
-            multi_right = torch.mul(padded, padded_right)    # shape of (batch_size, seq_len, 2*hidden_dim)
-
-            features = torch.cat((padded, minus_left, minus_right, multi_left, multi_right), dim=-1) # shape of (batch_size, seq_len, 10*hidden_dim)
-            transitted_1 = torch.tanh(self.transition_1(self.dropout_layer(features)))               # shape of (batch_size, seq_len, 4*hidden_dim)
-            transitted_2 = self.transition_2(self.dropout_layer(transitted_1))                       # shape of (batch_size, seq_len, 2*hidden_dim)
-
-            prev_layer = transitted_2
+            prev_layer = self.attention(padded, padded, padded, mask)      # shape of (batch_size, seq_len, 2*hidden_dim)
             
         outputs = self.output_layer(prev_layer)
 
