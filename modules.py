@@ -398,9 +398,14 @@ class CWSLstm(nn.Module):
             self._2gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 2)
             self._3gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 3)
             self._4gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 4)
-            self._5gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 5)
+        #    self._5gram_cnn_layer = nn.Conv1d(self.embed_dim, 20, 5)
 
-            self.embed_dim += 80
+            self._2gram_gated_leyer = nn.Conv1d(self.embed_dim, 20, 2)
+            self._3gram_gated_leyer = nn.Conv1d(self.embed_dim, 20, 3)
+            self._4gram_gated_leyer = nn.Conv1d(self.embed_dim, 20, 4)
+        #    self._5gram_gated_leyer = nn.Conv1d(self.embed_dim, 20, 5)
+
+            self.embed_dim += 60
 
         if predict_word:
             self.predict_layer_1 = nn.Linear(2 * hidden_dim, 100)
@@ -432,18 +437,30 @@ class CWSLstm(nn.Module):
             embeded = self.predict_unk(inputs, lengths, embeded, self.oov_window)  # shape of (batch_size, seq_len, embedding_dim)
 
         if self.use_cnn:   # transpose --> (batch_size, embedding_dim, seq_len) --> *
-            embeded_2gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=1, right_size=0) 
-            embeded_3gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=1, right_size=1)
-            embeded_4gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=2, right_size=1)
-            embeded_5gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=2, right_size=2)
+            # NOTE: if we want to use CNN as well as keeping the size after that, we should manually pad the sequence.
+            # In this implementation, we use GLU (Gated Linear Unit)
+            padded_2gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=1, right_size=0) 
+            padded_3gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=1, right_size=1)
+            padded_4gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=2, right_size=1)
+        #    padded_5gram = self.cnn_tensor(embeded.transpose(1, 2), left_size=2, right_size=2)
 
-            embeded_2gram = self._2gram_cnn_layer(embeded_2gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
-            embeded_3gram = self._3gram_cnn_layer(embeded_3gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
-            embeded_4gram = self._4gram_cnn_layer(embeded_4gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
-            embeded_5gram = self._5gram_cnn_layer(embeded_5gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+            embeded_2gram = self._2gram_cnn_layer(padded_2gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+            embeded_3gram = self._3gram_cnn_layer(padded_3gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+            embeded_4gram = self._4gram_cnn_layer(padded_4gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+        #    embeded_5gram = self._5gram_cnn_layer(padded_5gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
 
-            embeded = torch.cat((embeded, embeded_2gram, embeded_3gram, embeded_4gram, embeded_5gram), dim=-1)
+            gated_2gram = self._2gram_gated_leyer(padded_2gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+            gated_3gram = self._3gram_gated_leyer(padded_3gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+            gated_4gram = self._4gram_gated_leyer(padded_4gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
+        #    gated_5gram = self._5gram_gated_leyer(padded_5gram).transpose(1, 2)  # shape of (batch_size, seq_len, 20)
 
+            gated_2gram = torch.mul(torch.sigmoid(gated_2gram), embeded_2gram)   # shape of (batch_size, seq_len, 20)
+            gated_3gram = torch.mul(torch.sigmoid(gated_3gram), embeded_3gram)   # shape of (batch_size, seq_len, 20)
+            gated_4gram = torch.mul(torch.sigmoid(gated_4gram), embeded_4gram)   # shape of (batch_size, seq_len, 20)
+        #    gated_5gram = torch.mul(torch.sigmoid(gated_5gram), embeded_5gram)   # shape of (batch_size, seq_len, 20)
+
+            embeded = torch.cat((embeded, gated_2gram, gated_3gram, gated_4gram), dim=-1)
+            
         embeded = self.dropout_layer(embeded)
 
         packed = pack_padded_sequence(embeded, lengths, batch_first=True)
