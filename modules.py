@@ -83,7 +83,7 @@ class Attention(nn.Module):
             self.attn = nn.Linear(hidden_dim, hidden_dim)
         else:
             self.attn = nn.Linear(2 * hidden_dim, hidden_dim)
-            self.v = nn.Parameter(torch.FloatTensor(self.hidden_dim))
+            self.v = nn.Parameter(torch.zeros(self.hidden_dim))
     
     def forward(self,
                 queries,
