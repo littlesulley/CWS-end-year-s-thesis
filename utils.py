@@ -81,6 +81,9 @@ class Vocab:
         with open(path, 'w', encoding='utf-8') as fout:
             fout.write(save_words)
 
+    def as_list(self):
+        return list(self.word2id.keys())
+
     @classmethod
     def from_file(self, in_file):
         self.id2word = {0:"<PAD>", 1:"<UNK>", 2:"<START>", 3:"<END>"}

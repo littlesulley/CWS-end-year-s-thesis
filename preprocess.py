@@ -7,8 +7,7 @@ import math
 import numpy as np  
 import pandas as pd 
 
-from utils import split_dataset, Vocab, statisctics, convert_conll_to_cws, half_to_full_width
-from utils import Vocab
+from utils import *
 
 def merge_files(BASE_DIR, files, save_file_path):
     for file in files:
@@ -118,12 +117,24 @@ def convert_seg_to_unseg(file_path, save_path):
 
 #================== build word vocab for UD and CTB training sets =============================
 #
-ud_vocab = Vocab(min_count=1, level='word')
-ud_vocab.add_file('./datasets/training/ud_train')
-ud_vocab.trim()
-ud_vocab.save_vocab('./datasets/gold/ud_training_words')
+#ud_vocab = Vocab(min_count=1)
+#ud_vocab.add_file('./datasets/training/ud_train')
+#ud_vocab.trim()
+#ud_vocab.save_vocab('./datasets/gold/ud_training_words')
 
-ud_vocab = Vocab(min_count=1, level='word')
-ud_vocab.add_file('./datasets/training/ctb_train')
-ud_vocab.trim()
-ud_vocab.save_vocab('./datasets/gold/ctb_training_words')
+#ud_vocab = Vocab(min_count=1)
+#ud_vocab.add_file('./datasets/training/ctb_train')
+#ud_vocab.trim()
+#ud_vocab.save_vocab('./datasets/gold/ctb_training_words')
+
+ud_train_vocab = Vocab(min_count=1)
+ud_train_vocab.add_file('./datasets/training/ud_train')
+ud_train_vocab.trim()
+ud_dev_vocab = Vocab(min_count=1)
+ud_dev_vocab.add_file('./datasets/training/ud_dev')
+ud_dev_vocab.trim()
+
+ud_train_vocab = ud_train_vocab.as_list()
+ud_dev_vocab = ud_dev_vocab.as_list()
+
+vocab_overlap_and_difference_ratio(ud_train_vocab, ud_dev_vocab)

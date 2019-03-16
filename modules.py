@@ -12,6 +12,7 @@ import sys
 import itertools
 
 import torch 
+import torch.autograd as autograd
 import torch.nn as nn 
 import torch.nn.functional as F 
 import torch.optim as optim 
@@ -20,47 +21,203 @@ from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
 
 class CRFLayer(nn.Module):
-    """This module implements a simple CRF layer."""
+    """This module implements a simple CRF layer, modified from https://github.com/jiesutd/NCRFpp/blob/master/model/crf.py"""
     def __init__(self,
-                 output_size=5,
-                 start_tag=0,
-                 end_tag=6):
+                 output_size=5):
         super(CRFLayer, self).__init__()
         self.output_size = output_size
-        self.start_tag = start_tag
-        self.end_tag = end_tag
 
-        self.transition = nn.Parameter(torch.zeros(output_size + 2, output_size + 2))
-        self.transition.data[start_tag, :] = -100000.
-        self.transition.data[:, end_tag] = -100000.
+        # In https://github.com/jiesutd/NCRFpp/blob/master/model/crf.py, there're two extra tokens <START> and <END>, 
+        # whereas here only the original tokens are used.
+        self.transition = nn.Parameter(torch.zeros(output_size, output_size))
 
-    def forward(self,
-                inputs,
-                mask,
-                lengths):
+    def forward(self, inputs, mask, lengths, labels=None):
+        """
+        args: 
+            inputs: a 3D tensor, shape of (batch_size, seq_len, output_size)
+        returns:
+            best_path: a 2D tensor, shape of (batch_size, seq_len)
+        """
+        path_score, best_path = self.decode(inputs, mask, lengths)
+        if labels is not None:
+            loss = self.NLLLoss(inputs, mask, lengths, labels)
+            return path_score, best_path, loss
+        else: path_score, best_path
+
+    def calculate_PZ(self,
+                     inputs,
+                     mask):
         """
         args:
             inputs: a 3D tensor, shape of (batch_size, seq_len, output_size)
             mask: a 2D tensor, shape of (batch_size, seq_len)
-            lengths: a 1D tensor, shape of (batch_size, )
         returns:
-            outputs: a 3D tensor, shape of (batch_size, seq_len, output_size)
+            total_score: a scalar, the sum of scores of all samples in one batch
+            scores: a 4D tensor, shape of (seq_len, batch_size, output_size, output_size)
+
+        NOTE: To understand the code, you can refer to https://createmomo.github.io/2017/09/12/CRF_Layer_on_the_Top_of_BiLSTM_1/
         """
-        # TODO 
-        pass
+        batch_size = inputs.size(0)
+        seq_len = inputs.size(1)
+        output_size = inputs.size(2)
+        n_tokens = seq_len * batch_size
 
+        assert output_size == self.output_size, ("Whoops, there's something wrong with your label dimension.")
 
-    def decode(self, inputs, mask):
-        '''Use Viterbi algorithm to calculate the scores.'''
-        #TODO
-        pass
+        mask = mask.transpose(0, 1).contiguous()                                    # shape of (seq_len, batch_size)
+        inputs = inputs.transpose(0, 1).contiguous()                                # shape of (seq_len, batch_size, output_size)
+        inputs = inputs.view(n_tokens, 1, output_size).expand(-1, output_size, -1)  # shape of (seq_len * batch_size, output_size, output_size)
 
+        # next we add `inputs` with `transition` to get scores
+        # you can do this at every step below, we do it here for efficiency
+        # NOTE: at the third line, we subtract `transition` at the first step for every sample in the batch,
+        #       this is because at the first step, there's no any transition to it.
+        scores = inputs + self.transition.unsqueeze(0).expand(n_tokens, -1, -1)     # shape of (seq_len * batch_size, output_size, output_size)
+        scores = scores.view(seq_len, batch_size, output_size, -1)                  # shape of (seq_len, batch_size, output_size, output_size)
+        scores[0] = scores[0] - self.transition.unsqueeze(0).expand(batch_size, -1, -1)
+                                                                                    # shape of (seq_len, batch_size, output_size, output_size)
+        # next we build iterator
+        iterator = enumerate(scores)
+        partition = torch.zeros(batch_size, output_size, 1).cuda()                  # shape of (batch_size, output_size, 1)
+
+        #
+        for i, current_step in iterator:
+            # partition: previous results log(sum(exp(*))), shape of (batch_size, output_size, 1)
+            # current_step: shape of (batch_size, output_size, output_size)
+
+            current_step = current_step + partition.expand(-1, -1, output_size)     # shape of (batch_size, output_size, output_size)
+            current_partition = self.log_sum_exp(current_step)                      # shape of (batch_size, output_size)
+
+            mask_i = mask[i, :].view(batch_size, 1).expand(-1, output_size)         # shape of (batch_size, output_size)
+            masked_current_partition = current_partition.masked_select(mask_i)
+            mask_i = mask_i.contiguous().unsqueeze(2)                               # shape of (batch_size, output_size, 1)
+
+            partition.masked_scatter_(mask_i, masked_current_partition)             # shape of (batch_size, output_size, 1)
+
+        # at last, we calculate the total scores. 
+        total_score = torch.sum(self.log_sum_exp(partition))
+
+        return total_score, scores
+
+    def decode(self, inputs, mask, lengths):
+        '''Use Viterbi algorithm to calculate the scores.
+        args:
+            inputs: a 3D tensor, shape of (batch_size, seq_len, output_size)
+            mask: a 2D tensor, shape of (batch_size, seq_len)
+            lengths: a 1D tensor, shape of (batch_size, )
+        outputs:
+            decode_index: the decoded sequence, shape of (batch_size, seq_len)
+            path_score(TODO): the corresponding score for each sequence, shape of (batch_size, ) 
+        '''
+        batch_size = inputs.size(0)
+        seq_len = inputs.size(1)
+        output_size = inputs.size(2)
+        n_tokens = seq_len * batch_size
+
+        assert output_size == self.output_size, ("Whoops, there's something wrong with your label dimension.")
+
+        mask = mask.transpose(0, 1).contiguous()                                    # shape of (seq_len, batch_size)
+        inputs = inputs.transpose(0, 1).contiguous()                                # shape of (seq_len, batch_size, output_size)
+        inputs = inputs.view(n_tokens, 1, output_size).expand(-1, output_size, -1)  # shape of (seq_len * batch_size, output_size, output_size)
+
+        # next we add `inputs` with `transition` to get scores
+        # you can do this at every step below, we do it here for efficiency
+        # NOTE: at the third line, we subtract `transition` at the first step for every sample in the batch,
+        #       this is because at the first step, there's no any transition to it.
+        scores = inputs + self.transition.unsqueeze(0).expand(n_tokens, -1, -1)    # shape of (seq_len * batch_size, output_size, output_size)
+        scores = scores.view(seq_len, batch_size, output_size, -1)                 # shape of (seq_len, batch_size, output_size, output_size)
+        scores[0] = scores[0] - self.transition.unsqueeze(0).expand(batch_size, -1, -1)
+                                                                                   # shape of (seq_len, batch_size, output_size, output_size)
+        # next we build iterator and back checkpoints for the best path
+        iterator = enumerate(scores)
+        back_points = list()
+        partition_history = list()
+
+        # the first step
+        partition = torch.zeros(batch_size, output_size, 1).cuda()                  # shape of (batch_size, output_size, 1)
+
+        #
+        for i, current_step in iterator:
+            current_step = current_step + partition.expand(-1, -1, output_size)     # shape of (batch_size, output_size, output_size)
+            partition, current_argmax = torch.max(current_step, dim=1)              # shape of (batch_size, output_size)
+            partition_history.append(partition)
+            partition = partition.unsqueeze(2)                                      # shape of (batch_size, output_size, 1)
+
+            back_points.append(current_argmax)                                      # shape of (batch_size, output_size)
         
+        partition_history = torch.cat(partition_history, dim=0).view(seq_len, batch_size, -1).transpose(0, 1).contiguous()
+                                                                                    # shape of (batch_size, seq_len, output_size)
+        last_position = lengths.view(batch_size, 1, 1).expand(-1, -1, output_size) - 1 
+                                                                                    # shape of (batch_size, 1, output_size)
+        last_partition = torch.gather(partition_history, 1, last_position).view(batch_size, output_size)
+                                                                                    # shape of (batch_size, output_size)
 
+        # then, we calculate the indexes of the maximum values
+        _, pointer = torch.max(last_partition, dim=1)                               # shape of (batch_size, )
+        back_points = torch.cat(back_points).view(seq_len, batch_size, -1)          # shape of (seq_len, batch_size, output_size)
 
+        # now we decode from the last position of each sample
+        decode_index = autograd.Variable(torch.LongTensor(seq_len, batch_size)).cuda()
+        decode_index[-1] = pointer.detach()
+        for i in range(len(back_points) - 1, 0, -1):
+            current_mask = mask[i]
+            current_pointer = torch.gather(back_points[i], 1, pointer.contiguous().view(batch_size, 1))
+            pointer.masked_scatter_(current_mask, current_pointer)
+            decode_index[i - 1] = pointer.detach().view(batch_size)
+
+        path_score = None
+        decode_index = decode_index.transpose(0, 1)                                 # shape of (batch_seq, seq_len)
+        return path_score, decode_index
+
+    def sentence_score(self, scores, mask, labels):
+        """
+        args:
+            scores: a 4D tensor, shape of (seq_len, batch_size, output_size, output_size)
+            mask: a 2D tensor, shape of (batch_size, seq_len)
+            lengths: a 1D tensor, shape of (batch_size, )
+            labels: a 2D tensor, shape of (batch_size, seq_len)
+        outputs:
+            score: sum of scores for gold sentences within each batch
+        """
+        batch_size = scores.size(1)
+        seq_len = scores.size(0)
+        output_size = scores.size(2)
+
+        new_labels = autograd.Variable(torch.LongTensor(batch_size, seq_len)).cuda()
+
+        for i in range(seq_len):
+            if i == 0:
+                new_labels[:, 0] = labels[:, 0]
+            else:
+                new_labels[:, i] = labels[:, i - 1] * output_size + labels[:, i]
+
+        new_labels = new_labels.transpose(0, 1).contiguous().view(seq_len, batch_size, 1)                       # shape of (seq_len, batch_size, 1)
+        tg_energy = torch.gather(scores.view(seq_len, batch_size, -1), 2, new_labels).view(seq_len, batch_size) # shape of (seq_len, batch_size)
+        tg_energy = tg_energy.masked_select(mask.transpose(0, 1))
+
+        gold_score = tg_energy.sum()
+        return gold_score
+    
     def log_sum_exp(self, x):
-        x_max = torch.max(x, dim=-1)
-        return x_max + torch.log(torch.sum(torch.exp(x - x_max), dim=-1))
+        """calculate the log of exp sum
+        args:
+            x: a 3D tensor, shape of (batch_size, output_size, _output_size)
+            NOTE: at most cases, `_output_size` == `output_size`, but not always.
+        returns:
+            outputs: a 2D tensor, shape of (batch_size, _output_size)
+        """
+        x_max, _ = torch.max(x, dim=1, keepdim=True)                                         # shape of (batch_size, 1, _output_size)
+        logged_x = x_max + torch.log(torch.sum(torch.exp(x - x_max), dim=1, keepdim=True))   # shape of (batch_size, 1, _output_size)
+        return logged_x.squeeze(1)                                                           # shape of (batch_size, _output_size)
+
+    def NLLLoss(self, inputs, mask, lengths, labels):
+        batch_size = inputs.size(0)
+        forward_score, scores = self.calculate_PZ(inputs, mask)
+        gold_score = self.sentence_score(scores, mask, labels)
+        return (forward_score - gold_score) / batch_size
+
+    def __repr__(self):
+        return 'CRF_layer(output_size=%d)' % (self.output_size)
 
 class Attention(nn.Module):
     """This module implements attention."""
@@ -368,7 +525,7 @@ class CWSLstm(nn.Module):
                 use_cnn=False,
                 predict_word=False,
                 use_attention=False,
-               **kwargs):
+                **kwargs):
         super(CWSLstm, self).__init__()
         if vocab_size is None:
             if pretrained_embedding is None:
@@ -418,8 +575,7 @@ class CWSLstm(nn.Module):
 
         self.init_orthogonal(self.lstm_layer)
         if use_CRF:
-            #TODO: implement CRF layer module.
-            pass 
+            self.crf_layer = CRFLayer(4)
 
     def forward(self,
                 inputs,
