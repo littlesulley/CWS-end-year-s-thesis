@@ -19,7 +19,6 @@ import torch.optim as optim
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
 
-
 class CRFLayer(nn.Module):
     """This module implements a simple CRF layer, modified from https://github.com/jiesutd/NCRFpp/blob/master/model/crf.py"""
     def __init__(self,
