@@ -1,0 +1,15 @@
+dropout: 0.1, lr: 0.005, layer: 2, hidden dim:250, decay: 0.8.  ### checkpoint/MS/MS_pred 956 1434 2380 4770 106873 106395 0.964 0.969 0.966 0.026 0.735 0.971
+dropout: 0.1, lr: 0.005, layer: 2, hidden dim:250, decay: 0.85.  ### checkpoint/MS/MS_pred 1042 1418 2394 4854 106873 106497 0.964 0.968 0.966 0.026 0.720 0.971
+dropout: 0.1, lr: 0.005, layer: 2, hidden dim:300, decay: 0.8.  ### checkpoint/MS/MS_pred 1018 1236 2300 4554 106873 106655 0.967 0.969 0.968 0.026 0.723 0.974
+dropout: 0.1, lr: 0.005, layer: 2, hidden dim:300, decay: 0.85.  ### checkpoint/MS/MS_pred 1014 1314 2343 4671 106873 106573 0.966 0.969 0.967 0.026 0.738 0.972
+dropout: 0.1, lr: 0.005, layer: 3, hidden dim:250, decay: 0.8.  ### checkpoint/MS/MS_pred 995 1294 2205 4494 106873 106574 0.967 0.970 0.969 0.026 0.742 0.973
+dropout: 0.1, lr: 0.005, layer: 3, hidden dim:250, decay: 0.85.  ### checkpoint/MS/MS_pred 1084 1287 2302 4673 106873 106670 0.966 0.968 0.967 0.026 0.729 0.973
+dropout: 0.1, lr: 0.005, layer: 3, hidden dim:300, decay: 0.8.  ### checkpoint/MS/MS_pred 1054 1286 2259 4599 106873 106641 0.967 0.969 0.968 0.026 0.717 0.974
+dropout: 0.1, lr: 0.005, layer: 3, hidden dim:300, decay: 0.85.  ### checkpoint/MS/MS_pred 960 1248 2190 4398 106873 106585 0.968 0.970 0.969 0.026 0.745 0.974
+dropout: 0.1, lr: 0.004, layer: 2, hidden dim:250, decay: 0.8.  ### checkpoint/MS/MS_pred 895 1323 2219 4437 106873 106445 0.967 0.971 0.969 0.026 0.760 0.972
+dropout: 0.1, lr: 0.004, layer: 2, hidden dim:250, decay: 0.85.  ### checkpoint/MS/MS_pred 1010 1309 2275 4594 106873 106574 0.966 0.969 0.968 0.026 0.745 0.972
+dropout: 0.1, lr: 0.004, layer: 2, hidden dim:300, decay: 0.8.  ### checkpoint/MS/MS_pred 910 1325 2203 4438 106873 106458 0.967 0.971 0.969 0.026 0.747 0.973
+dropout: 0.1, lr: 0.004, layer: 2, hidden dim:300, decay: 0.85.  ### checkpoint/MS/MS_pred 1029 1353 2340 4722 106873 106549 0.965 0.968 0.967 0.026 0.721 0.972
+dropout: 0.1, lr: 0.004, layer: 3, hidden dim:250, decay: 0.8.  ### checkpoint/MS/MS_pred 971 1284 2167 4422 106873 106560 0.968 0.971 0.969 0.026 0.740 0.974
+dropout: 0.1, lr: 0.004, layer: 3, hidden dim:250, decay: 0.85.  ### checkpoint/MS/MS_pred 901 1184 2068 4153 106873 106590 0.970 0.972 0.971 0.026 0.758 0.975
+dropout: 0.1, lr: 0.004, layer: 3, hidden dim:300, decay: 0.8.  ### checkpoint/MS/MS_pred 915 1270 2197 4382 106873 106518 0.968 0.971 0.969 0.026 0.747 0.974

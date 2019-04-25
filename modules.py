@@ -614,7 +614,7 @@ class CWSLstm(nn.Module):
             gated_4gram = torch.mul(torch.sigmoid(gated_4gram), embeded_4gram)   # shape of (batch_size, seq_len, 20)
             gated_5gram = torch.mul(torch.sigmoid(gated_5gram), embeded_5gram)   # shape of (batch_size, seq_len, 20)
 
-            embeded = torch.cat((embeded, gated_2gram, gated_3gram, gated_4gram), dim=-1)
+            embeded = torch.cat((embeded, gated_2gram, gated_3gram, gated_4gram, gated_5gram), dim=-1)
             
         embeded = self.dropout_layer(embeded)
 
