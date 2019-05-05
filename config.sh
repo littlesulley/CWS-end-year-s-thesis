@@ -33,13 +33,13 @@ dev_path="datasets/training/${FILE}_dev"
 eval_path="datasets/testing/${FILE}_test"
 
 
-for dropout in 0.1  0.2
+for dropout in 0.1
 do
-    for lr in 0.005 0.004
+    for lr in 0.002
     do
-        for layers in 2 3
+        for layers in 3
         do 
-            for hidden_dim in 250 300
+            for hidden_dim in 300
             do 
                 for decay_rate in 0.8 0.85
                 do

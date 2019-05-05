@@ -561,7 +561,7 @@ class CWSLstm(nn.Module):
             self._4gram_gated_leyer = nn.Conv1d(self.embed_dim, 20, 4)
             self._5gram_gated_leyer = nn.Conv1d(self.embed_dim, 20, 5)
 
-            self.embed_dim += 80
+            self.embed_dim += 40
 
         if predict_word:
             self.predict_layer_1 = nn.Linear(2 * hidden_dim, 100)
@@ -614,7 +614,7 @@ class CWSLstm(nn.Module):
             gated_4gram = torch.mul(torch.sigmoid(gated_4gram), embeded_4gram)   # shape of (batch_size, seq_len, 20)
             gated_5gram = torch.mul(torch.sigmoid(gated_5gram), embeded_5gram)   # shape of (batch_size, seq_len, 20)
 
-            embeded = torch.cat((embeded, gated_2gram, gated_3gram, gated_4gram, gated_5gram), dim=-1)
+            embeded = torch.cat((embeded, gated_2gram, gated_3gram), dim=-1)
             
         embeded = self.dropout_layer(embeded)
 
